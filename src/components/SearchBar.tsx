@@ -32,7 +32,7 @@ export function SearchBar({
         name="q"
         defaultValue={defaultValue}
         placeholder="Kërko produkt, p.sh. qumësht, detergjent…"
-        className="w-full rounded-2xl border border-line bg-white py-3.5 pl-11 pr-24 text-sm shadow-sm outline-none transition placeholder:text-ink-soft/70 focus:border-deal focus:ring-2 focus:ring-deal/15"
+        className="w-full rounded-2xl border border-line bg-white py-3.5 pl-11 pr-24 text-sm text-ink caret-deal shadow-sm outline-none transition placeholder:text-ink-soft/70 focus:border-deal focus:ring-2 focus:ring-deal/15"
       />
       <button
         type="submit"

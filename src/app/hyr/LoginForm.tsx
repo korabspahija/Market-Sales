@@ -1,10 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function LoginForm({ returnTo }: { returnTo: string }) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -24,8 +22,9 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
     });
 
     if (res.ok) {
-      router.push(returnTo.startsWith("/") ? returnTo : "/menaxho");
-      router.refresh();
+      // full navigation: the client router may hold a stale pre-login
+      // cache of /menaxho (prefetched as a redirect to /hyr)
+      window.location.assign(returnTo.startsWith("/") ? returnTo : "/menaxho");
       return;
     }
 
