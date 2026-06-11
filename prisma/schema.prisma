@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Chain {
+  id         String    @id @default(cuid())
+  name       String
+  slug       String    @unique
+  brandColor String
+  logoUrl    String
+  stores     Store[]
+  managers   Manager[]
+  sales      Sale[]
+}
+
+model Store {
+  id      String @id @default(cuid())
+  chainId String
+  chain   Chain  @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  name    String
+  city    String
+  address String
+  mapsUrl String
+
+  @@index([city])
+}
+
+model Manager {
+  id           String @id @default(cuid())
+  email        String @unique
+  passwordHash String
+  name         String
+  chainId      String
+  chain        Chain  @relation(fields: [chainId], references: [id], onDelete: Cascade)
+}
+
+enum Category {
+  BULMET
+  MISH
+  PEME_PERIME
+  BUKE_BRUMERA
+  PIJE
+  EMBELSIRA_SNACKS
+  HIGJIENE_PASTRIM
+  USHQIME_BAZE
+}
+
+enum SizeUnit {
+  G
+  KG
+  ML
+  L
+  COPE
+}
+
+model Sale {
+  id            String   @id @default(cuid())
+  chainId       String
+  chain         Chain    @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  productName   String
+  // accent-folded lowercase copy of productName (ë→e, ç→c) for accent-insensitive search
+  searchName    String
+  category      Category
+  sizeValue     Float
+  sizeUnit      SizeUnit
+  oldPriceCents Int
+  newPriceCents Int
+  imageUrl      String
+  startsAt      DateTime
+  endsAt        DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([searchName])
+  @@index([chainId])
+  @@index([startsAt, endsAt])
+}

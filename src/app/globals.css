@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #0f172a;
+  --color-ink-soft: #5b6678;
+  --color-paper: #f5f6f8;
+  --color-line: #e6e8ee;
+
+  /* "deal" red — the hero color for new prices & discount badges */
+  --color-deal: #dc2626;
+  --color-deal-dark: #b91c1c;
+  --color-deal-soft: #fef2f2;
+
+  --color-mint: #059669;
+  --color-mint-soft: #ecfdf5;
+
+  --color-amber-tag: #d97706;
+  --color-amber-soft: #fffbeb;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* struck-through old price */
+.price-old {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: color-mix(in srgb, var(--color-ink-soft) 55%, transparent);
+}
+
+/* hide scrollbars on horizontal chip rows, keep them scrollable */
+.chip-row {
+  scrollbar-width: none;
+}
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
