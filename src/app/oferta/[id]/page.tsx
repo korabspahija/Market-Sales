@@ -63,7 +63,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
         <div className="flex flex-col gap-4 p-5 md:p-7">
           <div className="flex items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={sale.chain.logoUrl} alt="" className="h-9 w-9 rounded-xl shadow-sm" />
+            <img src={sale.chain.logoUrl} alt="" className="h-9 w-9 rounded-xl border border-line bg-white object-contain p-0.5 shadow-sm" />
             <div>
               <p className="text-sm font-bold leading-tight">{sale.chain.name}</p>
               <p className="text-xs text-ink-soft">në të gjitha dyqanet e zinxhirit</p>

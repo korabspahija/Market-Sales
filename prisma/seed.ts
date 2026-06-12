@@ -6,7 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { CATEGORY_META } from "../src/lib/categories";
 import { normalizeSearch, slugify } from "../src/lib/text";
-import { CHAINS, MANAGERS, SALES, STORES } from "./seed-data";
+import { CHAINS, MANAGER_PASSWORD, MANAGERS, SALES, STORES } from "./seed-data";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -52,12 +52,14 @@ async function main() {
   const now = new Date();
   mkdirSync(SEED_DIR, { recursive: true });
 
-  // 1. images
+  // 1. images — real brand logos live in public/brands/; lettermark fallback otherwise
   for (const chain of CHAINS) {
-    writeFileSync(
-      path.join(SEED_DIR, `logo-${chain.slug}.svg`),
-      logoSvg(chain.letter, chain.brandColor, chain.darkColor),
-    );
+    if (!chain.logoFile) {
+      writeFileSync(
+        path.join(SEED_DIR, `logo-${chain.slug}.svg`),
+        logoSvg(chain.letter, chain.brandColor, chain.darkColor),
+      );
+    }
   }
   for (const sale of SALES) {
     const file = `${slugify(sale.name)}.svg`;
@@ -79,7 +81,7 @@ async function main() {
         name: chain.name,
         slug: chain.slug,
         brandColor: chain.brandColor,
-        logoUrl: `/seed/logo-${chain.slug}.svg`,
+        logoUrl: chain.logoFile ? `/brands/${chain.logoFile}` : `/seed/logo-${chain.slug}.svg`,
       },
     });
     chainIds.set(chain.slug, created.id);
@@ -137,7 +139,7 @@ async function main() {
   console.log(
     `✓ U mbollën: ${CHAINS.length} zinxhirë, ${STORES.length} dyqane, ${MANAGERS.length} menaxherë, ${SALES.length} oferta (${active} aktive, ${expired} të skaduara, ${upcoming} të ardhshme)`,
   );
-  console.log("\nLlogaritë e menaxherëve (fjalëkalimi: Zbritje2026):");
+  console.log(`\nLlogaritë e menaxherëve (fjalëkalimi: ${MANAGER_PASSWORD}):`);
   for (const manager of MANAGERS) console.log(`  ${manager.email}`);
 }
 

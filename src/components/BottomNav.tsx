@@ -27,13 +27,14 @@ const ITEMS = [
   },
 ];
 
-export function BottomNav() {
+export function BottomNav({ isManager }: { isManager: boolean }) {
   const pathname = usePathname();
+  const items = isManager ? ITEMS : ITEMS.filter((item) => item.href !== "/menaxho");
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       <div className="mx-auto flex max-w-md items-stretch">
-        {ITEMS.map((item) => {
+        {items.map((item) => {
           const active =
             item.href === "/" ? pathname === "/" || pathname.startsWith("/oferta") : pathname.startsWith(item.href);
           return (

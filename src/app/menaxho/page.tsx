@@ -40,7 +40,7 @@ export default async function ManagerDashboard() {
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={chain.logoUrl} alt="" className="h-12 w-12 rounded-2xl shadow-sm" />
+          <img src={chain.logoUrl} alt="" className="h-12 w-12 rounded-2xl border border-line bg-white object-contain p-1 shadow-sm" />
           <div>
             <h1 className="text-xl font-extrabold leading-tight tracking-tight md:text-2xl">
               {chain.name}

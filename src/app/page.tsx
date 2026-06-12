@@ -50,10 +50,10 @@ export default async function HomePage(props: PageProps<"/">) {
     <div className="space-y-5">
       <section className="rounded-3xl bg-ink px-5 py-7 text-white md:px-8 md:py-9">
         <h1 className="max-w-xl text-2xl font-extrabold leading-tight tracking-tight md:text-3xl">
-          Zbritjet e marketeve të Kosovës, <span className="text-red-400">në një vend</span>
+          Aksionet e marketeve të Kosovës, <span className="text-red-400">në një vend</span>
         </h1>
         <p className="mt-1.5 max-w-xl text-sm text-white/70 md:text-base">
-          Krahaso ofertat aktuale të Viva Fresh, Eli-abi e Meridian Express dhe kurse në çdo blerje.
+          Krahaso ofertat aktuale të marketeve kryesore të Kosovës dhe kurse në çdo blerje.
         </p>
         <div className="mt-5 max-w-xl">
           <SearchBar
@@ -87,7 +87,7 @@ export default async function HomePage(props: PageProps<"/">) {
               }`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={chain.logoUrl} alt="" className="h-6 w-6 rounded-md" />
+              <img src={chain.logoUrl} alt="" className="h-6 w-6 rounded-md bg-white object-contain p-px" />
               {chain.name}
             </Link>
           );

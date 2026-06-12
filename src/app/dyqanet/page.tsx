@@ -24,18 +24,20 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
     }),
   ]);
 
-  const cities = (
-    await prisma.store.findMany({ select: { city: true }, distinct: ["city"], orderBy: { city: "asc" } })
-  ).map((s) => s.city);
+  // cities with the most points of sale first (Prishtina etc.)
+  const cityCounts = await prisma.store.groupBy({
+    by: ["city"],
+    _count: { _all: true },
+    orderBy: [{ _count: { city: "desc" } }, { city: "asc" }],
+  });
+  const cities = cityCounts.map((c) => c.city);
 
   const countByChain = new Map(saleCounts.map((c) => [c.chainId, c._count._all]));
 
   const byCity = new Map<string, typeof stores>();
-  for (const store of stores) {
-    const list = byCity.get(store.city) ?? [];
-    list.push(store);
-    byCity.set(store.city, list);
-  }
+  for (const cityName of cities) byCity.set(cityName, []);
+  for (const store of stores) byCity.get(store.city)?.push(store);
+  for (const [cityName, list] of byCity) if (list.length === 0) byCity.delete(cityName);
 
   return (
     <div className="space-y-5">
@@ -93,7 +95,7 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
                     className="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-4"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={store.chain.logoUrl} alt={store.chain.name} className="h-11 w-11 rounded-xl shadow-sm" />
+                    <img src={store.chain.logoUrl} alt={store.chain.name} className="h-11 w-11 rounded-xl border border-line bg-white object-contain p-1 shadow-sm" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">{store.name}</p>
                       <p className="truncate text-xs text-ink-soft">{store.address}</p>

@@ -33,7 +33,7 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
           src={sale.chain.logoUrl}
           alt={sale.chain.name}
           title={sale.chain.name}
-          className="absolute right-2 top-2 h-8 w-8 rounded-lg shadow-sm ring-2 ring-white"
+          className="absolute right-2 top-2 h-8 w-8 rounded-lg bg-white object-contain p-0.5 shadow-sm ring-2 ring-white"
         />
       </div>
 
