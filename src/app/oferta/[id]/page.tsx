@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ShareButtons } from "@/components/ShareButtons";
 import { CATEGORY_META } from "@/lib/categories";
 import { prisma } from "@/lib/db";
 import {
@@ -9,6 +10,7 @@ import {
   formatPrice,
   formatSize,
   formatUnitPrice,
+  shouldShowUnitPrice,
   validityLabel,
 } from "@/lib/format";
 import { getVisibleSale, isSaleActive } from "@/lib/sales";
@@ -16,8 +18,17 @@ import { getSession } from "@/lib/session";
 
 export async function generateMetadata(props: PageProps<"/oferta/[id]">): Promise<Metadata> {
   const { id } = await props.params;
-  const sale = await prisma.sale.findUnique({ where: { id }, select: { productName: true } });
-  return { title: sale?.productName ?? "Oferta" };
+  const sale = await prisma.sale.findUnique({ where: { id }, include: { chain: true } });
+  if (!sale) return { title: "Oferta" };
+
+  const percent = discountPercent(sale.oldPriceCents, sale.newPriceCents);
+  const title = `${sale.productName} -${percent}% te ${sale.chain.name}`;
+  const description = `${formatPrice(sale.newPriceCents)} në vend të ${formatPrice(sale.oldPriceCents)} — vlen deri më ${formatDateFull(sale.endsAt)}. Krahaso aksionet e marketeve në aksione.com.`;
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "website" },
+  };
 }
 
 export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
@@ -96,9 +107,11 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
               <span className="rounded-lg bg-mint-soft px-2 py-1 text-mint">
                 Kursen {formatPrice(saved)}
               </span>
-              <span className="rounded-lg bg-white px-2 py-1 text-ink-soft">
-                {formatUnitPrice(sale.newPriceCents, sale.sizeValue, sale.sizeUnit)}
-              </span>
+              {shouldShowUnitPrice(sale.category, sale.sizeUnit) && (
+                <span className="rounded-lg bg-white px-2 py-1 text-ink-soft">
+                  {formatUnitPrice(sale.newPriceCents, sale.sizeValue, sale.sizeUnit)}
+                </span>
+              )}
             </div>
           </div>
 
@@ -108,6 +121,11 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
               Vlen prej {formatDateFull(sale.startsAt)} deri më {formatDateFull(sale.endsAt)}.
             </p>
           </div>
+
+          <ShareButtons
+            title={`${sale.productName} -${percent}% te ${sale.chain.name}`}
+            text={`${sale.productName} -${percent}% te ${sale.chain.name}: ${formatPrice(sale.newPriceCents)} në vend të ${formatPrice(sale.oldPriceCents)} — vlen deri më ${formatDateFull(sale.endsAt)} 🛒`}
+          />
         </div>
       </div>
 

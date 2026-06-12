@@ -1,4 +1,4 @@
-import type { SizeUnit } from "@/generated/prisma/enums";
+import type { Category, SizeUnit } from "@/generated/prisma/enums";
 
 const euro = new Intl.NumberFormat("sq", {
   style: "currency",
@@ -38,6 +38,21 @@ export function formatSize(value: number, unit: SizeUnit): string {
 
 export function discountPercent(oldCents: number, newCents: number): number {
   return Math.round(((oldCents - newCents) / oldCents) * 100);
+}
+
+/**
+ * €/kg–€/L comparison only helps for bulk commodities (meat, produce, dairy,
+ * staples) — on snacks, hygiene or piece-counted items it's just noise.
+ */
+const UNIT_PRICE_CATEGORIES: ReadonlySet<Category> = new Set([
+  "MISH",
+  "PEME_PERIME",
+  "BULMET",
+  "USHQIME_BAZE",
+]);
+
+export function shouldShowUnitPrice(category: Category, unit: SizeUnit): boolean {
+  return unit !== "COPE" && UNIT_PRICE_CATEGORIES.has(category);
 }
 
 /** Price per base unit: €/kg for G+KG, €/L for ML+L, €/copë for COPE. */

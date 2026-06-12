@@ -4,6 +4,7 @@ import {
   formatPrice,
   formatSize,
   formatUnitPrice,
+  shouldShowUnitPrice,
   validityLabel,
 } from "@/lib/format";
 import type { SaleWithChain } from "@/lib/sales";
@@ -43,8 +44,10 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
 
         <p className="line-clamp-2 text-sm font-bold leading-snug">{sale.productName}</p>
         <p className="text-xs text-ink-soft">
-          {formatSize(sale.sizeValue, sale.sizeUnit)} ·{" "}
-          {formatUnitPrice(sale.newPriceCents, sale.sizeValue, sale.sizeUnit)}
+          {formatSize(sale.sizeValue, sale.sizeUnit)}
+          {shouldShowUnitPrice(sale.category, sale.sizeUnit) && (
+            <> · {formatUnitPrice(sale.newPriceCents, sale.sizeValue, sale.sizeUnit)}</>
+          )}
         </p>
 
         <div className="mt-1 flex items-baseline gap-2">

@@ -32,12 +32,19 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
   });
   const cities = cityCounts.map((c) => c.city);
 
-  const countByChain = new Map(saleCounts.map((c) => [c.chainId, c._count._all]));
+  const offerCountByChain = new Map(saleCounts.map((c) => [c.chainId, c._count._all]));
 
-  const byCity = new Map<string, typeof stores>();
-  for (const cityName of cities) byCity.set(cityName, []);
-  for (const store of stores) byCity.get(store.city)?.push(store);
-  for (const [cityName, list] of byCity) if (list.length === 0) byCity.delete(cityName);
+  // city -> chain -> stores, so each chain appears once per city
+  const byCity = new Map<string, Map<string, { chain: (typeof stores)[number]["chain"]; locations: typeof stores }>>();
+  for (const cityName of cities) byCity.set(cityName, new Map());
+  for (const store of stores) {
+    const chains = byCity.get(store.city);
+    if (!chains) continue;
+    const entry = chains.get(store.chainId) ?? { chain: store.chain, locations: [] };
+    entry.locations.push(store);
+    chains.set(store.chainId, entry);
+  }
+  for (const [cityName, chains] of byCity) if (chains.size === 0) byCity.delete(cityName);
 
   return (
     <div className="space-y-5">
@@ -81,40 +88,61 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
           <p className="mt-1 text-sm text-ink-soft">Provo një qytet tjetër.</p>
         </div>
       ) : (
-        [...byCity.entries()].map(([cityName, cityStores]) => (
+        [...byCity.entries()].map(([cityName, chains]) => (
           <section key={cityName}>
             <h2 className="mb-2.5 text-sm font-extrabold uppercase tracking-wide text-ink-soft">
               {cityName}
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {cityStores.map((store) => {
-                const count = countByChain.get(store.chainId) ?? 0;
+              {[...chains.values()].map(({ chain, locations }) => {
+                const offers = offerCountByChain.get(chain.id) ?? 0;
                 return (
-                  <div
-                    key={store.id}
-                    className="flex items-center gap-3.5 rounded-2xl border border-line bg-white p-4"
+                  <details
+                    key={chain.id}
+                    className="group rounded-2xl border border-line bg-white open:shadow-sm"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={store.chain.logoUrl} alt={store.chain.name} className="h-11 w-11 rounded-xl border border-line bg-white object-contain p-1 shadow-sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{store.name}</p>
-                      <p className="truncate text-xs text-ink-soft">{store.address}</p>
-                      <Link
-                        href={`/?zinxhiri=${store.chain.slug}`}
-                        className="mt-1 inline-block rounded-md bg-deal-soft px-1.5 py-0.5 text-[11px] font-bold text-deal-dark transition hover:bg-deal/15"
-                      >
-                        {count === 1 ? "1 ofertë aktive" : `${count} oferta aktive`}
-                      </Link>
-                    </div>
-                    <a
-                      href={store.mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 rounded-xl border border-line px-3 py-2 text-xs font-bold transition hover:border-ink/40 hover:bg-paper"
-                    >
-                      Hap në hartë ↗
-                    </a>
-                  </div>
+                    <summary className="flex cursor-pointer list-none items-center gap-3.5 p-4 [&::-webkit-details-marker]:hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={chain.logoUrl}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-xl border border-line bg-white object-contain p-1 shadow-sm"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          href={`/?zinxhiri=${chain.slug}`}
+                          className="truncate text-sm font-bold underline-offset-2 hover:text-deal hover:underline"
+                        >
+                          {chain.name}
+                        </Link>
+                        <p className="mt-0.5 text-xs text-ink-soft">
+                          {locations.length === 1 ? "1 lokacion" : `${locations.length} lokacione`} ·{" "}
+                          <span className="font-bold text-deal-dark">
+                            {offers === 1 ? "1 ofertë aktive" : `${offers} oferta aktive`}
+                          </span>
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-ink-soft transition group-open:rotate-180">▾</span>
+                    </summary>
+                    <ul className="divide-y divide-line border-t border-line">
+                      {locations.map((store) => (
+                        <li key={store.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{store.name}</p>
+                            <p className="truncate text-xs text-ink-soft">{store.address}</p>
+                          </div>
+                          <a
+                            href={store.mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 rounded-xl border border-line px-3 py-2 text-xs font-bold transition hover:border-ink/40 hover:bg-paper"
+                          >
+                            Hap në hartë ↗
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 );
               })}
             </div>
