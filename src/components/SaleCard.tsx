@@ -17,27 +17,30 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
       href={`/oferta/${sale.id}`}
       className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink/5"
     >
-      <div className="relative aspect-square overflow-hidden bg-paper">
-        {/* SVG seed images & small uploads — plain img keeps it simple and mobile-portable */}
+      <div className="relative aspect-square overflow-hidden bg-white">
+        {/* SVG placeholders & real photos mix — plain img keeps it simple and mobile-portable */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={sale.imageUrl}
           alt={sale.productName}
-          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+          className="h-full w-full object-contain p-1.5 transition duration-300 group-hover:scale-[1.03]"
         />
         <span className="absolute left-2 top-2 rounded-lg bg-deal px-2 py-1 text-sm font-extrabold leading-none text-white shadow-sm">
           -{percent}%
         </span>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={sale.chain.logoUrl}
-          alt={sale.chain.name}
-          title={sale.chain.name}
-          className="absolute right-2 top-2 h-8 w-8 rounded-lg bg-white object-contain p-0.5 shadow-sm ring-2 ring-white"
-        />
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
+        <p className="flex items-center gap-1.5 text-xs font-bold text-ink-soft">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={sale.chain.logoUrl}
+            alt=""
+            className="h-5 w-5 shrink-0 rounded-md border border-line bg-white object-contain p-px"
+          />
+          <span className="truncate">{sale.chain.name}</span>
+        </p>
+
         <p className="line-clamp-2 text-sm font-bold leading-snug">{sale.productName}</p>
         <p className="text-xs text-ink-soft">
           {formatSize(sale.sizeValue, sale.sizeUnit)} ·{" "}

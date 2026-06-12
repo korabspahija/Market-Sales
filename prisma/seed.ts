@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -13,6 +13,12 @@ const prisma = new PrismaClient({
 });
 
 const SEED_DIR = path.join(process.cwd(), "public", "seed");
+// real photos fetched by scripts/fetch-product-images.mjs; SVG placeholder otherwise
+const PRODUCTS_DIR = path.join(process.cwd(), "public", "products");
+
+function productImageUrl(slug: string): string {
+  return existsSync(path.join(PRODUCTS_DIR, `${slug}.jpg`)) ? `/products/${slug}.jpg` : `/seed/${slug}.svg`;
+}
 
 function productSvg(emoji: string, [from, to]: [string, string]): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480">
@@ -126,7 +132,7 @@ async function main() {
         sizeUnit: sale.sizeUnit,
         oldPriceCents: sale.oldPriceCents,
         newPriceCents: sale.newPriceCents,
-        imageUrl: `/seed/${slugify(sale.name)}.svg`,
+        imageUrl: productImageUrl(slugify(sale.name)),
         startsAt: daysFromNow(sale.startsInDays, now),
         endsAt: daysFromNow(sale.endsInDays, now),
       },

@@ -52,23 +52,27 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
       )}
 
       <div className="overflow-hidden rounded-3xl border border-line bg-white md:grid md:grid-cols-2">
-        <div className="relative aspect-square bg-paper">
+        <div className="relative aspect-square bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={sale.imageUrl} alt={sale.productName} className="h-full w-full object-cover" />
+          <img src={sale.imageUrl} alt={sale.productName} className="h-full w-full object-contain p-4" />
           <span className="absolute left-4 top-4 rounded-xl bg-deal px-3 py-1.5 text-xl font-extrabold leading-none text-white shadow">
             -{percent}%
           </span>
         </div>
 
         <div className="flex flex-col gap-4 p-5 md:p-7">
-          <div className="flex items-center gap-2.5">
+          <Link
+            href={`/?zinxhiri=${sale.chain.slug}`}
+            className="group flex items-center gap-2.5 rounded-2xl border border-line p-2 pr-3 transition hover:border-ink/30 hover:bg-paper"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={sale.chain.logoUrl} alt="" className="h-9 w-9 rounded-xl border border-line bg-white object-contain p-0.5 shadow-sm" />
-            <div>
-              <p className="text-sm font-bold leading-tight">{sale.chain.name}</p>
-              <p className="text-xs text-ink-soft">në të gjitha dyqanet e zinxhirit</p>
+            <img src={sale.chain.logoUrl} alt="" className="h-10 w-10 rounded-xl border border-line bg-white object-contain p-0.5 shadow-sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold leading-tight">{sale.chain.name}</p>
+              <p className="text-xs text-ink-soft">Shiko të gjitha ofertat e këtij marketi</p>
             </div>
-          </div>
+            <span className="text-ink-soft transition group-hover:translate-x-0.5 group-hover:text-ink">→</span>
+          </Link>
 
           <div>
             <h1 className="text-2xl font-extrabold leading-tight tracking-tight">
