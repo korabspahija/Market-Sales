@@ -53,3 +53,39 @@ export function saleDateRange(input: Pick<SaleInput, "startDate" | "endDate">) {
 export function firstZodError(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Të dhënat nuk janë të vlefshme.";
 }
+
+/** One reviewed row from the flier validation table. */
+const draftRowSchema = z
+  .object({
+    draftId: z.string().min(1),
+    productName: z
+      .string()
+      .trim()
+      .min(2, "Emri i produktit duhet të ketë së paku 2 shkronja.")
+      .max(80, "Emri i produktit është shumë i gjatë."),
+    category: z.enum(Category, { error: "Zgjidh kategorinë për çdo artikull të zgjedhur." }),
+    sizeValue: z.coerce
+      .number({ error: "Madhësia duhet të jetë numër." })
+      .positive("Madhësia duhet të jetë më e madhe se zero."),
+    sizeUnit: z.enum(SizeUnit, { error: "Zgjidh njësinë për çdo artikull të zgjedhur." }),
+    oldPrice: priceToCents,
+    newPrice: priceToCents,
+  })
+  .refine((row) => row.newPrice < row.oldPrice, {
+    message: "Çmimi i ri duhet të jetë më i ulët se çmimi i vjetër.",
+    path: ["newPrice"],
+  });
+
+export const flierPublishSchema = z
+  .object({
+    startDate: dateInput,
+    endDate: dateInput,
+    publish: z.array(draftRowSchema).max(200),
+    discardIds: z.array(z.string().min(1)).max(500),
+  })
+  .refine((data) => data.endDate >= data.startDate, {
+    message: "Data e mbarimit duhet të jetë pas datës së fillimit.",
+    path: ["endDate"],
+  });
+
+export type FlierPublishInput = z.infer<typeof flierPublishSchema>;

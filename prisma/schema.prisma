@@ -16,6 +16,7 @@ model Chain {
   stores     Store[]
   managers   Manager[]
   sales      Sale[]
+  fliers     Flier[]
 }
 
 model Store {
@@ -62,6 +63,9 @@ model Sale {
   id            String   @id @default(cuid())
   chainId       String
   chain         Chain    @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  // set when the offer was published from an uploaded flier
+  flierId       String?
+  flier         Flier?   @relation(fields: [flierId], references: [id], onDelete: SetNull)
   productName   String
   // accent-folded lowercase copy of productName (ë→e, ç→c) for accent-insensitive search
   searchName    String
@@ -79,4 +83,61 @@ model Sale {
   @@index([searchName])
   @@index([chainId])
   @@index([startsAt, endsAt])
+  @@index([flierId])
+}
+
+enum FlierStatus {
+  PROCESSING
+  REVIEW
+  PUBLISHED
+  FAILED
+}
+
+model Flier {
+  id        String      @id @default(cuid())
+  chainId   String
+  chain     Chain       @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  status    FlierStatus @default(PROCESSING)
+  // flier-level validity extracted from the pages; prefills the review form
+  startsAt  DateTime?
+  endsAt    DateTime?
+  error     String?
+  createdAt DateTime    @default(now())
+  pages     FlierPage[]
+  drafts    DraftSale[]
+  sales     Sale[]
+
+  @@index([chainId, createdAt])
+}
+
+enum FlierPageStatus {
+  PENDING
+  DONE
+  FAILED
+}
+
+model FlierPage {
+  id       String          @id @default(cuid())
+  flierId  String
+  flier    Flier           @relation(fields: [flierId], references: [id], onDelete: Cascade)
+  pageNo   Int
+  imageUrl String
+  status   FlierPageStatus @default(PENDING)
+
+  @@unique([flierId, pageNo])
+}
+
+// AI-extracted offer awaiting manager validation — nothing here is public
+model DraftSale {
+  id            String    @id @default(cuid())
+  flierId       String
+  flier         Flier     @relation(fields: [flierId], references: [id], onDelete: Cascade)
+  pageNo        Int
+  productName   String
+  category      Category?
+  sizeValue     Float?
+  sizeUnit      SizeUnit?
+  oldPriceCents Int?
+  newPriceCents Int
+  createdAt     DateTime  @default(now())
 }

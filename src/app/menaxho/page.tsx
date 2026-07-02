@@ -22,11 +22,14 @@ export default async function ManagerDashboard() {
   const session = await getSession();
   if (!session) redirect("/hyr");
 
-  const [chain, sales] = await Promise.all([
+  const [chain, sales, fliersNeedingAttention] = await Promise.all([
     prisma.chain.findUnique({ where: { id: session.chainId } }),
     prisma.sale.findMany({
       where: { chainId: session.chainId },
       orderBy: { endsAt: "desc" },
+    }),
+    prisma.flier.count({
+      where: { chainId: session.chainId, status: { in: ["PROCESSING", "REVIEW"] } },
     }),
   ]);
   if (!chain) redirect("/hyr");
@@ -54,6 +57,17 @@ export default async function ManagerDashboard() {
             className="rounded-xl bg-deal px-4 py-2.5 text-sm font-bold text-white transition hover:bg-deal-dark"
           >
             + Shto ofertë
+          </Link>
+          <Link
+            href="/menaxho/fletushkat"
+            className="relative rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-bold text-ink transition hover:border-ink/40"
+          >
+            📄 Fletushkat
+            {fliersNeedingAttention > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-deal px-1 text-[10px] font-extrabold text-white">
+                {fliersNeedingAttention}
+              </span>
+            )}
           </Link>
           <LogoutButton />
         </div>

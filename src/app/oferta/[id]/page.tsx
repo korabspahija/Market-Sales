@@ -126,6 +126,16 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
             title={`${sale.productName} -${percent}% te ${sale.chain.name}`}
             text={`${sale.productName} -${percent}% te ${sale.chain.name}: ${formatPrice(sale.newPriceCents)} në vend të ${formatPrice(sale.oldPriceCents)} — vlen deri më ${formatDateFull(sale.endsAt)} 🛒`}
           />
+
+          {sale.flierId && (
+            <Link
+              href={`/fletushka/${sale.flierId}`}
+              className="flex items-center justify-between rounded-2xl border border-line px-4 py-3 text-sm font-bold transition hover:border-ink/30 hover:bg-paper"
+            >
+              📄 Shiko artikujt tjerë nga fletushka
+              <span className="text-ink-soft">→</span>
+            </Link>
+          )}
         </div>
       </div>
 

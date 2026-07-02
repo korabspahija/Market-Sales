@@ -12,6 +12,10 @@ publish their time-limited sales and shoppers compare them in one place — acro
   upcoming ones — and can create, edit and delete them with product image upload.
   Shoppers only ever see sales that are currently active. The manager area is intentionally
   not linked anywhere in the public UI — managers go directly to `/hyr`.
+- **Flier ingestion (AI)**: managers upload flier pages as images; GPT-4o vision extracts
+  the offers into a review table where the manager validates names/prices and bulk-publishes.
+  Published offers carry a "📄 nga fletushka" link to the public `/fletushka/[id]` page with
+  the original pages. Limits: 10 pages/upload, 40 pages/chain/day. Requires `OPENAI_API_KEY`.
 
 The whole UI is in Albanian.
 

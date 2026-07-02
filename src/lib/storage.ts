@@ -3,6 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+/** flier pages are phone photos/scans — allow more */
+export const MAX_FLIER_PAGE_BYTES = 10 * 1024 * 1024;
 
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -11,9 +13,11 @@ const EXTENSIONS: Record<string, string> = {
   "image/svg+xml": ".svg",
 };
 
-export function validateImage(file: File): string | null {
+export function validateImage(file: File, maxBytes: number = MAX_IMAGE_BYTES): string | null {
   if (!EXTENSIONS[file.type]) return "Formati i imazhit duhet të jetë JPG, PNG, WEBP ose SVG.";
-  if (file.size > MAX_IMAGE_BYTES) return "Imazhi duhet të jetë më i vogël se 4 MB.";
+  if (file.size > maxBytes) {
+    return `Imazhi duhet të jetë më i vogël se ${Math.round(maxBytes / 1024 / 1024)} MB.`;
+  }
   return null;
 }
 

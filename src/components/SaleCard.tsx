@@ -14,10 +14,10 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
   const saved = sale.oldPriceCents - sale.newPriceCents;
 
   return (
-    <Link
-      href={`/oferta/${sale.id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink/5"
-    >
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink/5">
+      {/* stretched primary link — the whole card opens the offer */}
+      <Link href={`/oferta/${sale.id}`} className="absolute inset-0" aria-label={sale.productName} />
+
       <div className="relative aspect-square overflow-hidden bg-white">
         {/* SVG placeholders & real photos mix — plain img keeps it simple and mobile-portable */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -29,6 +29,15 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
         <span className="absolute left-2 top-2 rounded-lg bg-deal px-2 py-1 text-sm font-extrabold leading-none text-white shadow-sm">
           -{percent}%
         </span>
+        {sale.flierId && (
+          <Link
+            href={`/fletushka/${sale.flierId}`}
+            title="Shiko artikujt tjerë nga fletushka"
+            className="absolute bottom-2 right-2 z-10 rounded-lg border border-line bg-white/95 px-1.5 py-1 text-sm shadow-sm transition hover:border-deal hover:bg-deal-soft"
+          >
+            📄
+          </Link>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
@@ -68,6 +77,6 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
           </span>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }

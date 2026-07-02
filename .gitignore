@@ -46,3 +46,9 @@ next-env.d.ts
 
 # user-uploaded images (local dev storage)
 /public/uploads/
+
+# local session notes — never publish (contains internal coordination details)
+HANDOFF.md
+
+# bash crash dumps
+bash.exe.stackdump
