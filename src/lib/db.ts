@@ -17,9 +17,11 @@ function createClient() {
   const base = new PrismaClient({
     adapter: new PrismaPg({
       connectionString: process.env.DATABASE_URL,
-      max: 5,
+      // Supabase session pooler allows ~15 clients total and every warm
+      // serverless instance holds its own pool — keep this small
+      max: 2,
       // close idle sockets ourselves before the platform silently kills them
-      idleTimeoutMillis: 30_000,
+      idleTimeoutMillis: 20_000,
       connectionTimeoutMillis: 10_000,
     }),
   });

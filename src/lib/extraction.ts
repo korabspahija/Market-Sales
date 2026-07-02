@@ -8,6 +8,7 @@ export type ExtractedItem = {
   sizeUnit: SizeUnit | null;
   oldPriceEur: number | null;
   newPriceEur: number;
+  discountPercent: number | null;
   category: Category | null;
 };
 
@@ -32,13 +33,14 @@ const RESPONSE_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["productName", "sizeValue", "sizeUnit", "oldPriceEur", "newPriceEur", "category"],
+        required: ["productName", "sizeValue", "sizeUnit", "oldPriceEur", "newPriceEur", "discountPercent", "category"],
         properties: {
           productName: { type: "string", description: "Emri i produktit saktësisht siç shkruhet, me ë/ç" },
           sizeValue: { type: ["number", "null"], description: "Vlera numerike e madhësisë, p.sh. 750 për '750 ml'" },
           sizeUnit: { type: ["string", "null"], enum: [...UNIT_VALUES, null], description: "Njësia: G, KG, ML, L ose COPE" },
           oldPriceEur: { type: ["number", "null"], description: "Çmimi i vjetër/i rregullt në euro nëse shfaqet (p.sh. i vijëzuar)" },
           newPriceEur: { type: "number", description: "Çmimi i ri i ofertës në euro" },
+          discountPercent: { type: ["number", "null"], description: "Përqindja e zbritjes siç shkruhet në etiketë, p.sh. 25 për '-25%'" },
           category: { type: ["string", "null"], enum: [...CATEGORY_VALUES, null] },
         },
       },
@@ -55,6 +57,7 @@ Rregullat:
 - ANASHKALO: oferta shumëpjesëshe ("2 për 1.50€"), zbritje në përqindje pa çmim final, zbritje për kategori të tëra ("−20% në të gjitha detergjentet").
 - Emri i produktit: kopjoje SAKTËSISHT germë për germë siç shkruhet në tekstin e fletushkës (marka + produkti + varianti). MOS shto, mos hiq e mos "korrigjo" fjalë. Ruaj shkronjat ë dhe ç.
 - KUJDES te çmimi i vjetër (i vijëzuari): lexoje shifrën saktë dhe mos e ngatërro me përqindjen e zbritjes. Çmimet me superskript si "1.⁹⁹" lexohen 1.99. Nëse çmimi i vjetër s'shfaqet fare, vendos null.
+- Përqindja e zbritjes (p.sh. "-25%") zakonisht shkruhet pranë çmimit — raportoje te discountPercent si numër pozitiv (25). Nëse s'ka, null.
 - Madhësia merret nga TEKSTI i rreshtit të produktit (p.sh. "240g", "1.5l", "30 copë"), jo nga fotoja: "750 ml" → sizeValue 750, sizeUnit ML; "1 kg" → 1 KG; "30 copë" → 30 COPE; nëse s'shkruhet, null.
 - Kategoritë: BULMET (qumësht, djathë, vezë, jogurt), MISH, PEME_PERIME (pemë e perime të freskëta), BUKE_BRUMERA, PIJE (ujë, lëngje, kafe, çaj), EMBELSIRA_SNACKS, HIGJIENE_PASTRIM (detergjentë, kozmetikë, letër), USHQIME_BAZE (miell, oriz, vaj, sheqer, konserva).
 - Datat e vlefshmërisë nëse shkruhen diku në faqe (p.sh. "Oferta vlen 02–08 korrik"), formati YYYY-MM-DD. Nëse viti nuk shkruhet, supozo vitin që e bën ofertën aktuale ose të ardhshme në raport me sotën — KURRË vit të kaluar.`;
@@ -142,13 +145,25 @@ export async function extractFlierPage(imageUrl: string): Promise<ExtractionResu
   }
   parsed.items = (parsed.items ?? [])
     .filter((item) => item.productName?.trim() && item.newPriceEur > 0)
-    .map((item) => ({
-      productName: item.productName.trim().slice(0, 80),
-      sizeValue: item.sizeValue && item.sizeValue > 0 ? item.sizeValue : null,
-      sizeUnit: item.sizeUnit && UNIT_VALUES.includes(item.sizeUnit) ? item.sizeUnit : null,
-      oldPriceEur: item.oldPriceEur && item.oldPriceEur > 0 ? item.oldPriceEur : null,
-      newPriceEur: item.newPriceEur,
-      category: item.category && CATEGORY_VALUES.includes(item.category) ? item.category : null,
-    }));
+    .map((item) => {
+      const discountPercent =
+        item.discountPercent && item.discountPercent >= 1 && item.discountPercent <= 95
+          ? Math.round(item.discountPercent)
+          : null;
+      let oldPriceEur = item.oldPriceEur && item.oldPriceEur > 0 ? item.oldPriceEur : null;
+      // old price unreadable but the % badge is big and clear: derive a prefill
+      if (!oldPriceEur && discountPercent) {
+        oldPriceEur = Math.round((item.newPriceEur / (1 - discountPercent / 100)) * 100) / 100;
+      }
+      return {
+        productName: item.productName.trim().slice(0, 80),
+        sizeValue: item.sizeValue && item.sizeValue > 0 ? item.sizeValue : null,
+        sizeUnit: item.sizeUnit && UNIT_VALUES.includes(item.sizeUnit) ? item.sizeUnit : null,
+        oldPriceEur,
+        newPriceEur: item.newPriceEur,
+        discountPercent,
+        category: item.category && CATEGORY_VALUES.includes(item.category) ? item.category : null,
+      };
+    });
   return parsed;
 }

@@ -139,5 +139,7 @@ model DraftSale {
   sizeUnit      SizeUnit?
   oldPriceCents Int?
   newPriceCents Int
+  // the printed "-25%" badge — used to cross-check the struck-through old price
+  discountPercent Int?
   createdAt     DateTime  @default(now())
 }

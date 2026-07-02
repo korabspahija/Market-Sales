@@ -15,8 +15,24 @@ export type ReviewRow = {
   sizeUnit: SizeUnit | "";
   oldPrice: string;
   newPrice: string;
+  /** the printed "-25%" badge, used to sanity-check the struck-through old price */
+  discountPercent: number | null;
   duplicate: boolean;
 };
+
+/**
+ * The % badge is big and reliably read; the struck-through old price is not.
+ * Flags rows where the entered old price disagrees with new/(1 - %) by >5%.
+ */
+function oldPriceSuspicious(row: ReviewRow): number | null {
+  if (!row.discountPercent) return null;
+  const oldPrice = parseFloat(row.oldPrice.replace(",", "."));
+  const newPrice = parseFloat(row.newPrice.replace(",", "."));
+  if (!Number.isFinite(oldPrice) || !Number.isFinite(newPrice) || oldPrice <= 0 || newPrice <= 0) return null;
+  const expected = newPrice / (1 - row.discountPercent / 100);
+  if (Math.abs(oldPrice - expected) / expected > 0.05) return Math.round(expected * 100) / 100;
+  return null;
+}
 
 const cellInput =
   "w-full rounded-lg border border-line bg-white px-2 py-1.5 text-xs outline-none transition focus:border-deal";
@@ -241,6 +257,14 @@ export function FlierReviewTable({
                       placeholder="—"
                       className={cellInput}
                     />
+                    {(() => {
+                      const expected = oldPriceSuspicious(row);
+                      return expected !== null ? (
+                        <p className="mt-0.5 text-[10px] font-bold text-amber-tag">
+                          ⚠ -{row.discountPercent}% ⇒ ~{expected.toFixed(2)}€
+                        </p>
+                      ) : null;
+                    })()}
                   </td>
                   <td className="px-2 py-2">
                     <input

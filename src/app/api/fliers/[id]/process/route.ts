@@ -52,6 +52,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
           sizeUnit: item.sizeUnit,
           oldPriceCents: item.oldPriceEur ? Math.round(item.oldPriceEur * 100) : null,
           newPriceCents: Math.round(item.newPriceEur * 100),
+          discountPercent: item.discountPercent,
         })),
       });
     }
