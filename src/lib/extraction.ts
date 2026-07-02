@@ -46,16 +46,38 @@ const RESPONSE_SCHEMA = {
   },
 } as const;
 
-const SYSTEM_PROMPT = `Ti nxjerr oferta të strukturuara nga fotot e fletushkave të marketeve të Kosovës.
+function systemPrompt(): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return `Ti nxjerr oferta të strukturuara nga fotot e fletushkave të marketeve të Kosovës. Sot është ${today}.
 
 Rregullat:
 - Nxirr VETËM produkte individuale me çmim final të shkruar qartë në euro.
 - ANASHKALO: oferta shumëpjesëshe ("2 për 1.50€"), zbritje në përqindje pa çmim final, zbritje për kategori të tëra ("−20% në të gjitha detergjentet").
-- Emri i produktit: saktësisht siç shkruhet, me shkronjat ë dhe ç, pa CAPS të panevojshme (Title Case).
-- Çmimet me superskript si "1.⁹⁹" lexohen 1.99. Çmimi i vjetër është ai i vijëzuar ose "çmimi i rregullt"; nëse s'ka, vendos null.
-- Madhësia nga paketimi: "750 ml" → sizeValue 750, sizeUnit ML; "1 kg" → 1 KG; "10 copë" → 10 COPE; nëse s'ka, null.
+- Emri i produktit: kopjoje SAKTËSISHT germë për germë siç shkruhet në tekstin e fletushkës (marka + produkti + varianti). MOS shto, mos hiq e mos "korrigjo" fjalë. Ruaj shkronjat ë dhe ç.
+- KUJDES te çmimi i vjetër (i vijëzuari): lexoje shifrën saktë dhe mos e ngatërro me përqindjen e zbritjes. Çmimet me superskript si "1.⁹⁹" lexohen 1.99. Nëse çmimi i vjetër s'shfaqet fare, vendos null.
+- Madhësia merret nga TEKSTI i rreshtit të produktit (p.sh. "240g", "1.5l", "30 copë"), jo nga fotoja: "750 ml" → sizeValue 750, sizeUnit ML; "1 kg" → 1 KG; "30 copë" → 30 COPE; nëse s'shkruhet, null.
 - Kategoritë: BULMET (qumësht, djathë, vezë, jogurt), MISH, PEME_PERIME (pemë e perime të freskëta), BUKE_BRUMERA, PIJE (ujë, lëngje, kafe, çaj), EMBELSIRA_SNACKS, HIGJIENE_PASTRIM (detergjentë, kozmetikë, letër), USHQIME_BAZE (miell, oriz, vaj, sheqer, konserva).
-- Datat e vlefshmërisë nëse shkruhen diku në faqe (p.sh. "Oferta vlen 12–18 qershor"), formati YYYY-MM-DD.`;
+- Datat e vlefshmërisë nëse shkruhen diku në faqe (p.sh. "Oferta vlen 02–08 korrik"), formati YYYY-MM-DD. Nëse viti nuk shkruhet, supozo vitin që e bën ofertën aktuale ose të ardhshme në raport me sotën — KURRË vit të kaluar.`;
+}
+
+/**
+ * Fliers rarely print the year — the model sometimes invents a past one.
+ * Deterministically pick the year (last/this/next) that lands the date
+ * closest to today, so "02 korrik" in July 2026 becomes 2026-07-02 and a
+ * January flier uploaded in late December rolls into the next year.
+ */
+export function normalizeFlierDate(value: string | null, today = new Date()): string | null {
+  if (!value) return null;
+  const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, mm, dd] = match;
+  const year = today.getFullYear();
+  const candidates = [year - 1, year, year + 1].map((y) => new Date(y, Number(mm) - 1, Number(dd)));
+  const best = candidates.reduce((a, b) =>
+    Math.abs(a.getTime() - today.getTime()) <= Math.abs(b.getTime() - today.getTime()) ? a : b,
+  );
+  return `${best.getFullYear()}-${mm}-${dd}`;
+}
 
 /** Reads a stored flier page (local /uploads path or public https URL) as an OpenAI image content part. */
 async function toImagePart(imageUrl: string): Promise<{ type: "image_url"; image_url: { url: string; detail: "high" } }> {
@@ -84,7 +106,7 @@ export async function extractFlierPage(imageUrl: string): Promise<ExtractionResu
       model: process.env.OPENAI_MODEL || "gpt-4o",
       max_tokens: 8000,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt() },
         {
           role: "user",
           content: [
@@ -111,6 +133,13 @@ export async function extractFlierPage(imageUrl: string): Promise<ExtractionResu
 
   const parsed = JSON.parse(content) as ExtractionResult;
   // defensive normalization — never trust model output blindly
+  parsed.validFrom = normalizeFlierDate(parsed.validFrom);
+  parsed.validTo = normalizeFlierDate(parsed.validTo);
+  if (parsed.validFrom && parsed.validTo && parsed.validTo < parsed.validFrom) {
+    // Dec -> Jan spanning flier: roll the end date into the next year
+    const [y, m, d] = parsed.validTo.split("-");
+    parsed.validTo = `${Number(y) + 1}-${m}-${d}`;
+  }
   parsed.items = (parsed.items ?? [])
     .filter((item) => item.productName?.trim() && item.newPriceEur > 0)
     .map((item) => ({
