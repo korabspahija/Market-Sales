@@ -15,8 +15,9 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink/5">
-      {/* stretched primary link — the whole card opens the offer */}
-      <Link href={`/oferta/${sale.id}`} className="absolute inset-0" aria-label={sale.productName} />
+      {/* stretched primary link — z-[1] puts it above the (positioned) image
+          container so a tap anywhere on the card opens the offer */}
+      <Link href={`/oferta/${sale.id}`} className="absolute inset-0 z-[1]" aria-label={sale.productName} />
 
       <div className="relative aspect-square overflow-hidden bg-white">
         {/* SVG placeholders & real photos mix — plain img keeps it simple and mobile-portable */}

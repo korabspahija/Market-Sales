@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/ShareButtons";
+import { ZoomableImage } from "@/components/ZoomableImage";
 import { trackEvent } from "@/lib/analytics";
 import { CATEGORY_META } from "@/lib/categories";
 import {
@@ -93,8 +94,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
 
       <div className="overflow-hidden rounded-3xl border border-line bg-white md:grid md:grid-cols-2">
         <div className="relative aspect-square bg-white">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={sale.imageUrl} alt={sale.productName} className="h-full w-full object-contain p-4" />
+          <ZoomableImage src={sale.imageUrl} alt={sale.productName} className="h-full w-full object-contain p-4" />
           <span className="absolute left-4 top-4 rounded-xl bg-deal px-3 py-1.5 text-xl font-extrabold leading-none text-white shadow">
             -{percent}%
           </span>
