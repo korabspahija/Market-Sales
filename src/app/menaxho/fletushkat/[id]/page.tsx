@@ -93,6 +93,7 @@ export default async function FlierDetailPage(props: PageProps<"/menaxho/fletush
           id: page.id,
           pageNo: page.pageNo,
           imageUrl: page.imageUrl,
+          thumbUrl: page.thumbUrl,
           failed: page.status === "FAILED",
         }))}
       />

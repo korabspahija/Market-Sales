@@ -128,11 +128,12 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
               href={`/fletushka/${sale.flierId}`}
               className="flex items-center gap-3 rounded-2xl border border-line px-4 py-3 text-sm font-bold transition hover:border-ink/30 hover:bg-paper"
             >
-              {sale.flierPageUrl ? (
+              {sale.flierPageThumbUrl || sale.flierPageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={sale.flierPageUrl}
+                  src={sale.flierPageThumbUrl ?? sale.flierPageUrl ?? ""}
                   alt="Fletushka"
+                  loading="lazy"
                   className="h-14 w-10 shrink-0 rounded-md border border-line object-cover"
                 />
               ) : (

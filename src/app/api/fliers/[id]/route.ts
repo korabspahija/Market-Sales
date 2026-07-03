@@ -32,7 +32,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
     }
   }
 
-  const pagesByNo = new Map(flier.pages.map((p) => [p.pageNo, p.imageUrl]));
+  const pagesByNo = new Map(flier.pages.map((p) => [p.pageNo, p]));
   const { startsAt, endsAt } = saleDateRange(parsed.data);
 
   await prisma.sale.createMany({
@@ -41,7 +41,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
       return {
         chainId: flier.chainId,
         flierId: flier.id,
-        flierPageUrl: pagesByNo.get(draft.pageNo) ?? null,
+        flierPageUrl: pagesByNo.get(draft.pageNo)?.imageUrl ?? null,
+        flierPageThumbUrl: pagesByNo.get(draft.pageNo)?.thumbUrl ?? null,
         productName: row.productName,
         searchName: normalizeSearch(row.productName),
         category: row.category,

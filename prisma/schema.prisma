@@ -68,6 +68,8 @@ model Sale {
   flier         Flier?   @relation(fields: [flierId], references: [id], onDelete: SetNull)
   // the flier page image the offer came from — shown as the source thumbnail
   flierPageUrl  String?
+  // small (320px) version of that page for chips and strips
+  flierPageThumbUrl String?
   productName   String
   // accent-folded lowercase copy of productName (ë→e, ç→c) for accent-insensitive search
   searchName    String
@@ -124,6 +126,8 @@ model FlierPage {
   flier    Flier           @relation(fields: [flierId], references: [id], onDelete: Cascade)
   pageNo   Int
   imageUrl String
+  // small (320px) version for strips/chips — full image only in lightbox/editor
+  thumbUrl String?
   status   FlierPageStatus @default(PENDING)
 
   @@unique([flierId, pageNo])

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 
-type Page = { id: string; pageNo: number; imageUrl: string; failed?: boolean };
+type Page = { id: string; pageNo: number; imageUrl: string; thumbUrl?: string | null; failed?: boolean };
 
 /** Horizontal strip of flier pages; tapping opens a full-screen lightbox (mobile-first). */
 export function FlierPagesGallery({ pages, size = "lg" }: { pages: Page[]; size?: "sm" | "lg" }) {
@@ -23,8 +23,9 @@ export function FlierPagesGallery({ pages, size = "lg" }: { pages: Page[]; size?
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={page.imageUrl}
+              src={page.thumbUrl ?? page.imageUrl}
               alt={`Faqja ${page.pageNo}`}
+              loading="lazy"
               className={`${dimensions} rounded-xl border object-cover transition hover:opacity-90 ${
                 page.failed ? "border-deal opacity-60" : "border-line"
               }`}

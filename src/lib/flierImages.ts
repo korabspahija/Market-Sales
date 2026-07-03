@@ -15,6 +15,15 @@ export async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
 
 export type NormalizedBox = { x0: number; y0: number; x1: number; y1: number };
 
+/** Small (320px wide) version of a page image for chips and strips. */
+export async function makePageThumbnail(buffer: Buffer): Promise<string> {
+  const thumb = await sharp(buffer)
+    .resize({ width: 320, withoutEnlargement: true })
+    .jpeg({ quality: 70 })
+    .toBuffer();
+  return saveImageBuffer(thumb, "image/jpeg");
+}
+
 /**
  * Crops a normalized box out of a stored page image, stores the crop and
  * returns its public URL. Throws when the box is degenerate.

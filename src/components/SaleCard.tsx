@@ -35,9 +35,14 @@ export function SaleCard({ sale }: { sale: SaleWithChain }) {
             title="Shiko artikujt tjerë nga fletushka"
             className="absolute bottom-2 right-2 z-10 overflow-hidden rounded-lg border border-line bg-white/95 shadow-sm transition hover:border-deal"
           >
-            {sale.flierPageUrl ? (
+            {sale.flierPageThumbUrl || sale.flierPageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={sale.flierPageUrl} alt="Fletushka" className="h-12 w-9 object-cover" />
+              <img
+                src={sale.flierPageThumbUrl ?? sale.flierPageUrl ?? ""}
+                alt="Fletushka"
+                loading="lazy"
+                className="h-12 w-9 object-cover"
+              />
             ) : (
               <span className="block px-1.5 py-1 text-sm">📄</span>
             )}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { makePageThumbnail } from "@/lib/flierImages";
 import { getSession } from "@/lib/session";
 import { MAX_FLIER_PAGE_BYTES, saveImage, validateImage } from "@/lib/storage";
 
@@ -46,9 +47,11 @@ export async function POST(request: Request) {
   const flier = await prisma.flier.create({ data: { chainId: session.chainId } });
 
   for (let i = 0; i < pages.length; i++) {
+    const buffer = Buffer.from(await pages[i].arrayBuffer());
     const imageUrl = await saveImage(pages[i]);
+    const thumbUrl = await makePageThumbnail(buffer).catch(() => null);
     await prisma.flierPage.create({
-      data: { flierId: flier.id, pageNo: i + 1, imageUrl },
+      data: { flierId: flier.id, pageNo: i + 1, imageUrl, thumbUrl },
     });
   }
 
