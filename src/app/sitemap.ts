@@ -7,7 +7,7 @@ import { SITE_URL } from "@/lib/site";
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [sales, fliers] = await Promise.all([
+  const [sales, fliers, chains] = await Promise.all([
     prisma.sale.findMany({
       where: activeSaleWhere(),
       select: { id: true, updatedAt: true },
@@ -16,10 +16,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       where: { sales: { some: activeSaleWhere() } },
       select: { id: true, createdAt: true },
     }),
+    prisma.chain.findMany({ select: { slug: true } }),
   ]);
 
   return [
     { url: `${SITE_URL}/`, changeFrequency: "hourly", priority: 1 },
+    ...chains.map((chain) => ({
+      url: `${SITE_URL}/marketi/${chain.slug}`,
+      changeFrequency: "daily" as const,
+      priority: 0.9,
+    })),
     { url: `${SITE_URL}/dyqanet`, changeFrequency: "weekly", priority: 0.7 },
     { url: `${SITE_URL}/rreth-nesh`, changeFrequency: "monthly", priority: 0.3 },
     { url: `${SITE_URL}/privatesia`, changeFrequency: "yearly", priority: 0.1 },

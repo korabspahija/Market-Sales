@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { getChainsCached } from "@/lib/sales";
 import { CONTACT_EMAIL, INSTAGRAM_URL } from "@/lib/site";
 import { Logo } from "./Logo";
 
-export function Footer() {
+export async function Footer() {
+  const chains = await getChainsCached();
   return (
     <footer className="border-t border-line bg-white pb-24 pt-8 md:pb-8">
       <div className="mx-auto max-w-6xl space-y-6 px-4">
@@ -49,6 +51,21 @@ export function Footer() {
             >
               {CONTACT_EMAIL}
             </a>
+          </div>
+        </div>
+
+        <div className="border-t border-line pt-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-soft">Marketet</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+            {chains.map((chain) => (
+              <Link
+                key={chain.id}
+                href={`/marketi/${chain.slug}`}
+                className="font-semibold text-ink-soft transition hover:text-ink"
+              >
+                {chain.name}
+              </Link>
+            ))}
           </div>
         </div>
 

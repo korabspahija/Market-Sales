@@ -155,6 +155,56 @@ export const getStoresPageDataCached = unstable_cache(
   { revalidate: 60, tags: ["sales", "stores"] },
 );
 
+const cachedChainPage = unstable_cache(
+  async (slug: string) => {
+    const chain = await prisma.chain.findUnique({ where: { slug } });
+    if (!chain) return null;
+    const [sales, stores, flier] = await Promise.all([
+      prisma.sale.findMany({
+        where: { chainId: chain.id, ...activeSaleWhere() },
+        include: { chain: true },
+      }),
+      prisma.store.findMany({
+        where: { chainId: chain.id },
+        orderBy: [{ city: "asc" }, { name: "asc" }],
+      }),
+      prisma.flier.findFirst({
+        where: { chainId: chain.id, sales: { some: activeSaleWhere() } },
+        orderBy: { createdAt: "desc" },
+        include: { pages: { orderBy: { pageNo: "asc" } } },
+      }),
+    ]);
+    return { chain, sales, stores, flier };
+  },
+  ["chain-page"],
+  { revalidate: 60, tags: ["sales", "chains", "stores"] },
+);
+
+/** Everything the /marketi/[slug] page needs, cached 60s. */
+export async function getChainPageCached(slug: string) {
+  const data = await cachedChainPage(slug);
+  if (!data) return null;
+  const sales = data.sales.map(reviveSale);
+  sales.sort(
+    (a, b) =>
+      discountPercent(b.oldPriceCents, b.newPriceCents) -
+      discountPercent(a.oldPriceCents, a.newPriceCents),
+  );
+  return {
+    chain: data.chain,
+    stores: data.stores,
+    sales,
+    flier: data.flier
+      ? {
+          ...data.flier,
+          startsAt: data.flier.startsAt ? new Date(data.flier.startsAt) : null,
+          endsAt: data.flier.endsAt ? new Date(data.flier.endsAt) : null,
+          createdAt: new Date(data.flier.createdAt),
+        }
+      : null,
+  };
+}
+
 const cachedPublicFlier = unstable_cache(
   async (id: string) => {
     const flier = await prisma.flier.findUnique({

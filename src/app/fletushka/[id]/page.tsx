@@ -54,7 +54,7 @@ export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]"
           </p>
         </div>
         <Link
-          href={`/?zinxhiri=${flier.chain.slug}`}
+          href={`/marketi/${flier.chain.slug}`}
           className="shrink-0 rounded-xl border border-line bg-white px-3.5 py-2 text-xs font-bold transition hover:border-ink/40 hover:bg-paper"
         >
           Të gjitha ofertat e {flier.chain.name} →

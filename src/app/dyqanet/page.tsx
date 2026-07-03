@@ -96,7 +96,7 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
                       />
                       <div className="min-w-0 flex-1">
                         <Link
-                          href={`/?zinxhiri=${chain.slug}`}
+                          href={`/marketi/${chain.slug}`}
                           className="truncate text-sm font-bold underline-offset-2 hover:text-deal hover:underline"
                         >
                           {chain.name}

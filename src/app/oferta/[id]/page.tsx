@@ -102,7 +102,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
 
         <div className="flex flex-col gap-4 p-5 md:p-7">
           <Link
-            href={`/?zinxhiri=${sale.chain.slug}`}
+            href={`/marketi/${sale.chain.slug}`}
             className="group flex items-center gap-2.5 rounded-2xl border border-line p-2 pr-3 transition hover:border-ink/30 hover:bg-paper"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
