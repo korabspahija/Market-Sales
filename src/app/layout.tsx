@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/BottomNav";
+import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { getSession } from "@/lib/session";
 
@@ -36,9 +37,10 @@ export default async function RootLayout({
     <html lang="sq" className={`${manrope.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">
         <Header isManager={isManager} />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-4 md:pb-10">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-10 pt-4">
           {children}
         </main>
+        <Footer />
         <BottomNav isManager={isManager} />
       </body>
     </html>
