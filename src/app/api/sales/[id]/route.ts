@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -54,6 +55,7 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/sales/[id]">
     },
   });
 
+  revalidateTag("sales", "max");
   return NextResponse.json({ ok: true });
 }
 
@@ -66,5 +68,6 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/sales/[i
   if (!sale) return NextResponse.json({ error: "Oferta nuk u gjet." }, { status: 404 });
 
   await prisma.sale.delete({ where: { id: sale.id } });
+  revalidateTag("sales", "max");
   return NextResponse.json({ ok: true });
 }

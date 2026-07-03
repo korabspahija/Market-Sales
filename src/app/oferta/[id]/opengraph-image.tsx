@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
-import { prisma } from "@/lib/db";
 import { discountPercent, formatPrice, formatSize } from "@/lib/format";
+import { getSaleCached } from "@/lib/sales";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -8,7 +8,7 @@ export const alt = "Oferta në Aksione";
 
 export default async function OpenGraphImage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const sale = await prisma.sale.findUnique({ where: { id }, include: { chain: true } });
+  const sale = await getSaleCached(id);
 
   if (!sale) {
     return new ImageResponse(

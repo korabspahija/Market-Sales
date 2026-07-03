@@ -25,16 +25,18 @@ export async function computeCropRects(
   const none = items.map(() => null);
   if (items.length === 0) return none;
 
+  // layout A (Meridian-style): one light panel on a colored frame, products
+  // as content humps inside it. layout B (Interex-style): individual cards
+  // contrasting with the page background itself.
   const panel = await detectContentPanel(imageBuffer).catch(() => null);
-  if (!panel) {
-    // no detectable panel: the padded raw box is all there is
+  let bands = panel ? await detectGridBands(imageBuffer, panel).catch(() => null) : null;
+  if (!bands) bands = await detectPageCardBands(imageBuffer, panel).catch(() => null);
+  if (!bands) {
+    // no detectable structure: the padded raw box is all there is
     return items.map((item) =>
       item.box ? toPixels(item.box, imageWidth, imageHeight, 0.03) : null,
     );
   }
-
-  const bands = await detectGridBands(imageBuffer, panel).catch(() => null);
-  if (!bands) return none;
 
   const rows = bands.rowBands.length;
   const cols = bands.colBands.length;
@@ -77,9 +79,11 @@ export async function detectContentPanel(buffer: Buffer): Promise<BoundingBox | 
     .toBuffer({ resolveWithObject: true });
 
   const channel = (x: number, y: number, c: number) => data[(y * SIZE + x) * 3 + c];
+  // ring sampled slightly inset — exported fliers often carry a 1-3px white edge
+  const inset = Math.max(2, Math.round(SIZE * 0.025));
   const borderSamples: number[][] = [[], [], []];
-  for (let i = 0; i < SIZE; i++) {
-    for (const [x, y] of [[i, 0], [i, SIZE - 1], [0, i], [SIZE - 1, i]] as const) {
+  for (let i = inset; i < SIZE - inset; i++) {
+    for (const [x, y] of [[i, inset], [i, SIZE - 1 - inset], [inset, i], [SIZE - 1 - inset, i]] as const) {
       for (let c = 0; c < 3; c++) borderSamples[c].push(channel(x, y, c));
     }
   }
@@ -110,6 +114,156 @@ export async function detectContentPanel(buffer: Buffer): Promise<BoundingBox | 
 }
 
 type GridBands = { rowBands: [number, number][]; colBands: [number, number][] };
+
+/**
+ * Card-grid detection for pages where products sit on individual light cards
+ * over a colored (often textured) page background — e.g. white cards on
+ * orange. Lightness separates cards from any background texture; the bands
+ * come from light-pixel profiles, with small outlier bands (logo strips,
+ * footers) dropped rather than failing the page. Pages that are light all
+ * over (no card structure) produce one giant band and are rejected.
+ */
+export async function detectPageCardBands(
+  buffer: Buffer,
+  panel: BoundingBox | null,
+): Promise<GridBands | null> {
+  const meta = await sharp(buffer).metadata();
+  if (!meta.width || !meta.height) return null;
+
+  // analyze inside the panel when one was detected, otherwise inset the page
+  // edges — exported fliers often carry a white border that would read as cards
+  const area = panel ?? { x0: 0.025, y0: 0.025, x1: 0.975, y1: 0.975 };
+  const region = {
+    left: Math.round(area.x0 * meta.width),
+    top: Math.round(area.y0 * meta.height),
+    width: Math.round((area.x1 - area.x0) * meta.width),
+    height: Math.round((area.y1 - area.y0) * meta.height),
+  };
+  const W = 360;
+  const H = Math.max(90, Math.round((region.height / region.width) * W));
+  const { data } = await sharp(buffer)
+    .extract(region)
+    .resize(W, H, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  // light-pixel mask: card backgrounds are near-white, page textures are not
+  let mask = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 3;
+      if (Math.min(data[i], data[i + 1], data[i + 2]) >= 200) mask[y * W + x] = 1;
+    }
+  }
+
+  // erode twice: thin bridges between cards (JPEG halos, overhanging price
+  // tags) disconnect while the cards themselves survive
+  for (let pass = 0; pass < 2; pass++) {
+    const eroded = new Uint8Array(W * H);
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const p = y * W + x;
+        if (mask[p] && mask[p - 1] && mask[p + 1] && mask[p - W] && mask[p + W]) eroded[p] = 1;
+      }
+    }
+    mask = eroded;
+  }
+
+  // connected components -> the cards themselves
+  type Component = { minX: number; maxX: number; minY: number; maxY: number; area: number };
+  const seen = new Uint8Array(W * H);
+  const components: Component[] = [];
+  const stack: number[] = [];
+  for (let start = 0; start < W * H; start++) {
+    if (!mask[start] || seen[start]) continue;
+    const comp: Component = { minX: W, maxX: 0, minY: H, maxY: 0, area: 0 };
+    stack.push(start);
+    seen[start] = 1;
+    while (stack.length > 0) {
+      const p = stack.pop()!;
+      const px = p % W;
+      const py = (p / W) | 0;
+      comp.area++;
+      if (px < comp.minX) comp.minX = px;
+      if (px > comp.maxX) comp.maxX = px;
+      if (py < comp.minY) comp.minY = py;
+      if (py > comp.maxY) comp.maxY = py;
+      for (const q of [p - 1, p + 1, p - W, p + W]) {
+        if (q < 0 || q >= W * H || seen[q] || !mask[q]) continue;
+        if ((q === p - 1 && px === 0) || (q === p + 1 && px === W - 1)) continue;
+        seen[q] = 1;
+        stack.push(q);
+      }
+    }
+    components.push(comp);
+  }
+
+  // keep card-sized components only
+  const cards = components.filter(
+    (c) =>
+      c.area >= W * H * 0.015 &&
+      c.maxX - c.minX >= W * 0.08 &&
+      c.maxY - c.minY >= H * 0.06,
+  );
+  if (process.env.CROP_DEBUG) {
+    console.log(
+      `[crop] components: ${components.length}, card-sized: ${cards.length}`,
+      cards
+        .slice(0, 20)
+        .map((c) => `(${c.minX}-${c.maxX},${c.minY}-${c.maxY},a${c.area})`)
+        .join(" "),
+    );
+  }
+  if (cards.length < 4 || cards.length > 60) return null;
+
+  const rowClusters = clusterBands(cards.map((c) => [c.minY, c.maxY] as [number, number]), H);
+  const colClusters = clusterBands(cards.map((c) => [c.minX, c.maxX] as [number, number]), W);
+  if (!rowClusters || !colClusters) return null;
+  if (rowClusters.length < 2 || rowClusters.length > 10 || colClusters.length < 2 || colClusters.length > 8) return null;
+
+  const spanY = area.y1 - area.y0;
+  const spanX = area.x1 - area.x0;
+  return {
+    rowBands: rowClusters.map(([a, b]) => [area.y0 + (a / H) * spanY, area.y0 + (b / H) * spanY] as [number, number]),
+    colBands: colClusters.map(([a, b]) => [area.x0 + (a / W) * spanX, area.x0 + (b / W) * spanX] as [number, number]),
+  };
+}
+
+/**
+ * Groups card extents (e.g. [minY, maxY] of each card) into grid bands:
+ * cluster by center, band = union of member extents, then neighbouring
+ * bands split the gap between them.
+ */
+function clusterBands(extents: [number, number][], scale: number): [number, number][] | null {
+  const sorted = [...extents].sort((a, b) => (a[0] + a[1]) / 2 - (b[0] + b[1]) / 2);
+  const typical = median(sorted.map(([a, b]) => b - a));
+  const clusters: [number, number][] = [];
+  for (const [start, end] of sorted) {
+    const current = clusters[clusters.length - 1];
+    const center = (start + end) / 2;
+    if (current && center - (current[0] + current[1]) / 2 < typical * 0.5) {
+      current[0] = Math.min(current[0], start);
+      current[1] = Math.max(current[1], end);
+    } else {
+      clusters.push([start, end]);
+    }
+  }
+  // bands must not overlap and should be similar in size
+  for (let i = 1; i < clusters.length; i++) {
+    if (clusters[i][0] < clusters[i - 1][1] - typical * 0.2) return null;
+  }
+  const sizes = clusters.map(([a, b]) => b - a);
+  if (Math.max(...sizes) > Math.min(...sizes) * 2.5) return null;
+
+  // expand into half of each neighbouring gap (bounded by the scale)
+  return clusters.map(([a, b], i) => {
+    const from = i === 0 ? Math.max(0, a - typical * 0.05) : (clusters[i - 1][1] + a) / 2;
+    const to =
+      i === clusters.length - 1 ? Math.min(scale, b + typical * 0.05) : (b + clusters[i + 1][0]) / 2;
+    return [from, to] as [number, number];
+  });
+}
 
 /**
  * Row/column bands of a regular product grid inside the panel, found from
@@ -160,6 +314,14 @@ export async function detectGridBands(buffer: Buffer, panel: BoundingBox): Promi
     }),
   );
 
+  if (process.env.CROP_DEBUG) {
+    const compress = (f: number[]) =>
+      f.map((v) => (v > 0.5 ? "#" : v > 0.35 ? "*" : v > 0.2 ? "+" : v > 0.1 ? "." : " ")).join("");
+    console.log("[crop] panel bg:", bg.join(","));
+    console.log("[crop] panel rows:", compress(rowFraction));
+    console.log("[crop] panel cols:", compress(colFraction));
+  }
+
   const rowBands = bandsFromProfile(rowFraction, panel.y0, panel.y1);
   const colBands = bandsFromProfile(colFraction, panel.x0, panel.x1);
   if (!rowBands || !colBands) return null;
@@ -172,9 +334,14 @@ export async function detectGridBands(buffer: Buffer, panel: BoundingBox): Promi
  * each expanded to the midpoint of its neighbouring valleys so the crop
  * keeps the text at the card edges.
  */
-function bandsFromProfile(fraction: number[], normStart: number, normEnd: number): [number, number][] | null {
+function bandsFromProfile(
+  fraction: number[],
+  normStart: number,
+  normEnd: number,
+  // gaps can carry stray content (headers bridging columns) — stay above that
+  threshold = 0.2,
+): [number, number][] | null {
   const n = fraction.length;
-  const threshold = 0.12;
   const runs: [number, number][] = [];
   let start = -1;
   for (let i = 0; i <= n; i++) {
@@ -185,26 +352,37 @@ function bandsFromProfile(fraction: number[], normStart: number, normEnd: number
       start = -1;
     }
   }
-  // bridge specks and drop noise
-  const merged: [number, number][] = [];
-  for (const run of runs) {
-    const previous = merged[merged.length - 1];
-    if (previous && run[0] - previous[1] <= Math.max(1, n * 0.008)) previous[1] = run[1];
-    else merged.push([...run] as [number, number]);
+
+  // grid gaps can be as thin as 1px at this scale, so bridging noise specks
+  // can also swallow real gaps — try unbridged first, bridged as fallback
+  for (const bridge of [0, Math.max(1, n * 0.008)]) {
+    const merged: [number, number][] = [];
+    for (const run of runs) {
+      const previous = merged[merged.length - 1];
+      if (previous && run[0] - previous[1] <= bridge) previous[1] = run[1];
+      else merged.push([...run] as [number, number]);
+    }
+    let bands = merged.filter(([a, b]) => b - a >= n * 0.04);
+    if (bands.length === 0) continue;
+
+    // headers/footers register as small bands — drop them instead of failing
+    const sizeOf = ([a, b]: [number, number]) => b - a;
+    const medianSize = median(bands.map(sizeOf));
+    bands = bands.filter((band) => sizeOf(band) >= medianSize * 0.55);
+    if (bands.length < 2 || bands.length > 12) continue;
+
+    // what remains must look like a regular grid
+    const sizes = bands.map(sizeOf);
+    if (Math.max(...sizes) > Math.min(...sizes) * 2.2) continue;
+
+    const span = normEnd - normStart;
+    return bands.map(([a, b], i) => {
+      const from = i === 0 ? 0 : (bands[i - 1][1] + 1 + a) / 2;
+      const to = i === bands.length - 1 ? n : (b + 1 + bands[i + 1][0]) / 2;
+      return [normStart + (from / n) * span, normStart + (to / n) * span] as [number, number];
+    });
   }
-  const bands = merged.filter(([a, b]) => b - a >= n * 0.04);
-  if (bands.length === 0) return null;
-
-  // regular grids have similar band sizes — bail out on wild variance
-  const sizes = bands.map(([a, b]) => b - a);
-  if (Math.max(...sizes) > Math.min(...sizes) * 2.2) return null;
-
-  const span = normEnd - normStart;
-  return bands.map(([a, b], i) => {
-    const from = i === 0 ? 0 : (bands[i - 1][1] + 1 + a) / 2;
-    const to = i === bands.length - 1 ? n : (b + 1 + bands[i + 1][0]) / 2;
-    return [normStart + (from / n) * span, normStart + (to / n) * span] as [number, number];
-  });
+  return null;
 }
 
 function smooth(values: number[]): number[] {

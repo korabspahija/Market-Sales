@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -43,5 +44,6 @@ export async function POST(request: Request) {
     },
   });
 
+  revalidateTag("sales", "max");
   return NextResponse.json({ ok: true, id: sale.id }, { status: 201 });
 }

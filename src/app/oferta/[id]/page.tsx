@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/ShareButtons";
 import { CATEGORY_META } from "@/lib/categories";
-import { prisma } from "@/lib/db";
 import {
   discountPercent,
   formatDateFull,
@@ -13,12 +12,12 @@ import {
   shouldShowUnitPrice,
   validityLabel,
 } from "@/lib/format";
-import { getVisibleSale, isSaleActive } from "@/lib/sales";
+import { getChainStoresCached, getSaleCached, getVisibleSale, isSaleActive } from "@/lib/sales";
 import { getSession } from "@/lib/session";
 
 export async function generateMetadata(props: PageProps<"/oferta/[id]">): Promise<Metadata> {
   const { id } = await props.params;
-  const sale = await prisma.sale.findUnique({ where: { id }, include: { chain: true } });
+  const sale = await getSaleCached(id);
   if (!sale) return { title: "Oferta" };
 
   const percent = discountPercent(sale.oldPriceCents, sale.newPriceCents);
@@ -42,10 +41,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
   const meta = CATEGORY_META[sale.category];
   const active = isSaleActive(sale);
 
-  const stores = await prisma.store.findMany({
-    where: { chainId: sale.chainId },
-    orderBy: [{ city: "asc" }, { name: "asc" }],
-  });
+  const stores = await getChainStoresCached(sale.chainId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">

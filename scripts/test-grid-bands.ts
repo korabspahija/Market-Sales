@@ -3,15 +3,19 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { detectContentPanel, detectGridBands } from "../src/lib/crop";
+import { detectContentPanel, detectGridBands, detectPageCardBands } from "../src/lib/crop";
 
 async function main() {
   const [, , imagePath, outDir] = process.argv;
   const buffer = readFileSync(imagePath);
   const panel = await detectContentPanel(buffer);
   console.log("panel:", panel ? Object.values(panel).map((v) => v.toFixed(3)).join(",") : "NOT DETECTED");
-  if (!panel) return;
-  const bands = await detectGridBands(buffer, panel);
+  let bands = panel ? await detectGridBands(buffer, panel) : null;
+  if (bands) console.log("mode: panel grid");
+  if (!bands) {
+    bands = await detectPageCardBands(buffer, panel);
+    if (bands) console.log("mode: page card bands");
+  }
   if (!bands) {
     console.log("grid: NOT DETECTED (irregular page)");
     return;

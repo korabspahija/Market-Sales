@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { prisma } from "@/lib/db";
-import { activeSaleWhere } from "@/lib/sales";
+import { getStoresPageDataCached } from "@/lib/sales";
 
 export const metadata: Metadata = {
   title: "Dyqanet",
@@ -11,25 +10,11 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
   const searchParams = await props.searchParams;
   const city = typeof searchParams.qyteti === "string" ? searchParams.qyteti : "";
 
-  const [stores, saleCounts] = await Promise.all([
-    prisma.store.findMany({
-      where: city ? { city } : undefined,
-      include: { chain: true },
-      orderBy: [{ city: "asc" }, { name: "asc" }],
-    }),
-    prisma.sale.groupBy({
-      by: ["chainId"],
-      where: activeSaleWhere(),
-      _count: { _all: true },
-    }),
-  ]);
+  const data = await getStoresPageDataCached();
+  const stores = city ? data.stores.filter((s) => s.city === city) : data.stores;
+  const { saleCounts, cityCounts } = data;
 
   // cities with the most points of sale first (Prishtina etc.)
-  const cityCounts = await prisma.store.groupBy({
-    by: ["city"],
-    _count: { _all: true },
-    orderBy: [{ _count: { city: "desc" } }, { city: "asc" }],
-  });
   const cities = cityCounts.map((c) => c.city);
 
   const offerCountByChain = new Map(saleCounts.map((c) => [c.chainId, c._count._all]));

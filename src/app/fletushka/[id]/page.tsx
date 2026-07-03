@@ -2,32 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SaleCard } from "@/components/SaleCard";
-import { prisma } from "@/lib/db";
 import { formatDateFull } from "@/lib/format";
-import { activeSaleWhere } from "@/lib/sales";
+import { getPublicFlierCached } from "@/lib/sales";
 
 export async function generateMetadata(props: PageProps<"/fletushka/[id]">): Promise<Metadata> {
   const { id } = await props.params;
-  const flier = await prisma.flier.findUnique({ where: { id }, include: { chain: true } });
-  return { title: flier ? `Fletushka e ${flier.chain.name}` : "Fletushka" };
+  const data = await getPublicFlierCached(id);
+  return { title: data ? `Fletushka e ${data.flier.chain.name}` : "Fletushka" };
 }
 
 export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]">) {
   const { id } = await props.params;
-  const flier = await prisma.flier.findUnique({
-    where: { id },
-    include: {
-      chain: true,
-      pages: { orderBy: { pageNo: "asc" } },
-    },
-  });
-  if (!flier) notFound();
+  const data = await getPublicFlierCached(id);
+  if (!data) notFound();
 
-  const sales = await prisma.sale.findMany({
-    where: { flierId: flier.id, ...activeSaleWhere() },
-    include: { chain: true },
-    orderBy: { newPriceCents: "asc" },
-  });
+  const { flier, sales } = data;
 
   return (
     <div className="space-y-5">

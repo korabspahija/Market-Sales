@@ -43,3 +43,15 @@ body {
 .chip-row::-webkit-scrollbar {
   display: none;
 }
+
+/* Tailwind v4 dropped the pointer cursor on interactive elements — restore it */
+button:not(:disabled),
+summary,
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="file"] {
+  cursor: pointer;
+}
+::file-selector-button {
+  cursor: pointer;
+}

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Category, SizeUnit } from "@/generated/prisma/enums";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
 import { UNIT_LABELS } from "@/lib/format";
+import { ImageLightbox } from "./ImageLightbox";
 
 export type ReviewRow = {
   draftId: string;
@@ -74,6 +75,7 @@ export function FlierReviewTable({
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   function updateRow(draftId: string, patch: Partial<ReviewRow>) {
     setRows((prev) => prev.map((row) => (row.draftId === draftId ? { ...row, ...patch } : row)));
@@ -206,14 +208,14 @@ export function FlierReviewTable({
                   <td className="px-2 py-2">
                     {row.imageUrl && row.useImage ? (
                       <div className="relative h-12 w-12">
-                        <a href={row.imageUrl} target="_blank" rel="noopener noreferrer">
+                        <button type="button" onClick={() => setLightbox(row.imageUrl)} title="Shiko më të madhe">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={row.imageUrl}
                             alt=""
-                            className="h-12 w-12 rounded-lg border border-line bg-white object-contain"
+                            className="h-12 w-12 rounded-lg border border-line bg-white object-contain transition hover:border-deal"
                           />
-                        </a>
+                        </button>
                         <button
                           type="button"
                           title="Hiq imazhin — përdor ikonën e kategorisë"
@@ -342,6 +344,8 @@ export function FlierReviewTable({
           Artikujt e pazgjedhur mbeten si drafte derisa t’i publikosh ose fshish.
         </p>
       </div>
+
+      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }

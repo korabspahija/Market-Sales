@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type { Chain, Sale } from "@/generated/prisma/client";
 import type { Category } from "@/generated/prisma/enums";
 import { prisma } from "./db";
@@ -51,7 +52,7 @@ export async function getVisibleSale(
   id: string,
   viewerChainId?: string,
 ): Promise<SaleWithChain | null> {
-  const sale = await prisma.sale.findUnique({ where: { id }, include: { chain: true } });
+  const sale = await getSaleCached(id);
   if (!sale) return null;
 
   const now = new Date();
@@ -63,6 +64,127 @@ export async function getVisibleSale(
 
 export function isSaleActive(sale: Pick<Sale, "startsAt" | "endsAt">, now = new Date()): boolean {
   return sale.startsAt <= now && sale.endsAt > now;
+}
+
+/** unstable_cache serializes to JSON — revive the Date fields on cache hits. */
+function reviveSale<T extends SaleWithChain>(sale: T): T {
+  return {
+    ...sale,
+    startsAt: new Date(sale.startsAt),
+    endsAt: new Date(sale.endsAt),
+    createdAt: new Date(sale.createdAt),
+    updatedAt: new Date(sale.updatedAt),
+  };
+}
+
+const cachedActiveSales = unstable_cache(
+  async (chainSlug: string, category: string, sort: string) =>
+    getActiveSales({
+      chainSlug: chainSlug || undefined,
+      category: (category || undefined) as Category | undefined,
+      sort: sort as SaleSort,
+    }),
+  ["active-sales"],
+  { revalidate: 60, tags: ["sales"] },
+);
+
+/**
+ * Cached (60s) variant for the public pages — offers change weekly, so the
+ * DB sees at most one query per filter combination per minute regardless of
+ * traffic. Free-text searches bypass the cache (unbounded key space).
+ */
+export async function getActiveSalesCached(filters: SaleFilters = {}): Promise<SaleWithChain[]> {
+  if (filters.q) return getActiveSales(filters);
+  const sales = await cachedActiveSales(
+    filters.chainSlug ?? "",
+    filters.category ?? "",
+    filters.sort ?? "zbritja",
+  );
+  return sales.map(reviveSale);
+}
+
+const cachedSaleById = unstable_cache(
+  async (id: string) => prisma.sale.findUnique({ where: { id }, include: { chain: true } }),
+  ["sale-by-id"],
+  { revalidate: 60, tags: ["sales"] },
+);
+
+export async function getSaleCached(id: string): Promise<SaleWithChain | null> {
+  const sale = await cachedSaleById(id);
+  return sale ? reviveSale(sale) : null;
+}
+
+export const getChainsCached = unstable_cache(
+  async () => prisma.chain.findMany({ orderBy: { name: "asc" } }),
+  ["chains"],
+  { revalidate: 3600, tags: ["chains"] },
+);
+
+export const getChainStoresCached = unstable_cache(
+  async (chainId: string) =>
+    prisma.store.findMany({
+      where: { chainId },
+      orderBy: [{ city: "asc" }, { name: "asc" }],
+    }),
+  ["chain-stores"],
+  { revalidate: 3600, tags: ["stores"] },
+);
+
+/** Everything the /dyqanet page needs — 34 stores, filtered in JS after the cache. */
+export const getStoresPageDataCached = unstable_cache(
+  async () => {
+    const [stores, saleCounts, cityCounts] = await Promise.all([
+      prisma.store.findMany({
+        include: { chain: true },
+        orderBy: [{ city: "asc" }, { name: "asc" }],
+      }),
+      prisma.sale.groupBy({
+        by: ["chainId"],
+        where: activeSaleWhere(),
+        _count: { _all: true },
+      }),
+      prisma.store.groupBy({
+        by: ["city"],
+        _count: { _all: true },
+        orderBy: [{ _count: { city: "desc" } }, { city: "asc" }],
+      }),
+    ]);
+    return { stores, saleCounts, cityCounts };
+  },
+  ["stores-page"],
+  { revalidate: 60, tags: ["sales", "stores"] },
+);
+
+const cachedPublicFlier = unstable_cache(
+  async (id: string) => {
+    const flier = await prisma.flier.findUnique({
+      where: { id },
+      include: { chain: true, pages: { orderBy: { pageNo: "asc" } } },
+    });
+    if (!flier) return null;
+    const sales = await prisma.sale.findMany({
+      where: { flierId: id, ...activeSaleWhere() },
+      include: { chain: true },
+      orderBy: { newPriceCents: "asc" },
+    });
+    return { flier, sales };
+  },
+  ["public-flier"],
+  { revalidate: 60, tags: ["sales"] },
+);
+
+export async function getPublicFlierCached(id: string) {
+  const data = await cachedPublicFlier(id);
+  if (!data) return null;
+  return {
+    flier: {
+      ...data.flier,
+      startsAt: data.flier.startsAt ? new Date(data.flier.startsAt) : null,
+      endsAt: data.flier.endsAt ? new Date(data.flier.endsAt) : null,
+      createdAt: new Date(data.flier.createdAt),
+    },
+    sales: data.sales.map(reviveSale),
+  };
 }
 
 export type SaleStatus = "aktive" | "skaduar" | "se-shpejti";

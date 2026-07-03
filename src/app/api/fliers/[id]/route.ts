@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -66,6 +67,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
     await prisma.flier.update({ where: { id }, data: { status: "PUBLISHED" } });
   }
 
+  revalidateTag("sales", "max");
   return NextResponse.json({
     ok: true,
     published: parsed.data.publish.length,
@@ -86,5 +88,6 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/fliers/[
 
   // pages + drafts cascade; already-published offers keep living (flierId -> null)
   await prisma.flier.delete({ where: { id } });
+  revalidateTag("sales", "max");
   return NextResponse.json({ ok: true });
 }

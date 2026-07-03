@@ -4,8 +4,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { SortSelect } from "@/components/SortSelect";
 import { Category } from "@/generated/prisma/enums";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
-import { prisma } from "@/lib/db";
-import { getActiveSales, type SaleSort } from "@/lib/sales";
+import { getActiveSalesCached, getChainsCached, type SaleSort } from "@/lib/sales";
 
 function isCategory(value: string | undefined): value is Category {
   return value !== undefined && value in Category;
@@ -40,8 +39,8 @@ export default async function HomePage(props: PageProps<"/">) {
   };
 
   const [chains, sales] = await Promise.all([
-    prisma.chain.findMany({ orderBy: { name: "asc" } }),
-    getActiveSales({ q: q || undefined, chainSlug: chainSlug || undefined, category, sort }),
+    getChainsCached(),
+    getActiveSalesCached({ q: q || undefined, chainSlug: chainSlug || undefined, category, sort }),
   ]);
 
   const hasFilters = Boolean(q || chainSlug || category);
