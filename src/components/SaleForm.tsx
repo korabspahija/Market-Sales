@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Category, SizeUnit } from "@/generated/prisma/enums";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
 import { UNIT_LABELS } from "@/lib/format";
+import { CropEditor } from "./CropEditor";
 
 export type SaleFormDefaults = {
   productName: string;
@@ -32,15 +33,32 @@ export function SaleForm({
   mode,
   saleId,
   defaults,
+  flierPageUrl,
 }: {
   mode: "create" | "edit";
   saleId?: string;
   defaults?: SaleFormDefaults;
+  /** source flier page — enables re-cropping the product image from it */
+  flierPageUrl?: string | null;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<string | null>(defaults?.imageUrl ?? null);
+  const [cropOpen, setCropOpen] = useState(false);
+
+  async function saveFlierCrop(box: { x0: number; y0: number; x1: number; y1: number }) {
+    const res = await fetch(`/api/sales/${saleId}/crop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(box),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return body?.error ?? "Prerja dështoi. Provo përsëri.";
+    setPreview(body.imageUrl);
+    router.refresh();
+    return null;
+  }
 
   const today = new Date();
   const inAWeek = new Date(today.getTime() + 7 * 86_400_000);
@@ -244,7 +262,20 @@ export function SaleForm({
           />
         </div>
         <p className="mt-1.5 text-xs text-ink-soft">JPG, PNG, WEBP ose SVG — maksimumi 4 MB.</p>
+        {mode === "edit" && saleId && flierPageUrl && (
+          <button
+            type="button"
+            onClick={() => setCropOpen(true)}
+            className="mt-2 rounded-xl border border-line px-4 py-2 text-xs font-bold transition hover:border-deal hover:bg-deal-soft"
+          >
+            ✂️ Prije imazhin nga fletushka
+          </button>
+        )}
       </div>
+
+      {cropOpen && flierPageUrl && (
+        <CropEditor imageUrl={flierPageUrl} onSave={saveFlierCrop} onClose={() => setCropOpen(false)} />
+      )}
 
       {error && (
         <p className="rounded-xl bg-deal-soft px-3.5 py-2.5 text-sm font-medium text-deal-dark">

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Category, SizeUnit } from "@/generated/prisma/enums";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
 import { UNIT_LABELS } from "@/lib/format";
+import { CropEditor } from "./CropEditor";
 import { ImageLightbox } from "./ImageLightbox";
 
 export type ReviewRow = {
@@ -60,11 +61,14 @@ export function FlierReviewTable({
   initialRows,
   defaultStartDate,
   defaultEndDate,
+  pageImages,
 }: {
   flierId: string;
   initialRows: ReviewRow[];
   defaultStartDate: string;
   defaultEndDate: string;
+  /** pageNo -> page image URL, for the manual crop editor */
+  pageImages: Record<number, string>;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
@@ -76,6 +80,19 @@ export function FlierReviewTable({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<ReviewRow | null>(null);
+
+  async function saveManualCrop(row: ReviewRow, box: { x0: number; y0: number; x1: number; y1: number }) {
+    const res = await fetch(`/api/drafts/${row.draftId}/crop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(box),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return body?.error ?? "Prerja dështoi. Provo përsëri.";
+    updateRow(row.draftId, { imageUrl: body.imageUrl, useImage: true });
+    return null;
+  }
 
   function updateRow(draftId: string, patch: Partial<ReviewRow>) {
     setRows((prev) => prev.map((row) => (row.draftId === draftId ? { ...row, ...patch } : row)));
@@ -224,13 +241,27 @@ export function FlierReviewTable({
                         >
                           ✕
                         </button>
+                        {pageImages[row.pageNo] && (
+                          <button
+                            type="button"
+                            title="Prije vetë nga fletushka"
+                            onClick={() => setCropTarget(row)}
+                            className="absolute -bottom-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] shadow ring-1 ring-line hover:bg-paper"
+                          >
+                            ✂️
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <button
                         type="button"
-                        title={row.imageUrl ? "Rikthe imazhin e prerë nga fletushka" : "S'u gjet imazh — përdoret ikona e kategorisë"}
-                        onClick={() => row.imageUrl && updateRow(row.draftId, { useImage: true })}
-                        className={`flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-line text-xl ${row.imageUrl ? "cursor-pointer hover:border-ink/40" : "cursor-default"}`}
+                        title={
+                          pageImages[row.pageNo]
+                            ? "Zgjidh imazhin nga fletushka — prek produktin"
+                            : "S'u gjet imazh — përdoret ikona e kategorisë"
+                        }
+                        onClick={() => pageImages[row.pageNo] && setCropTarget(row)}
+                        className={`flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-line text-xl ${pageImages[row.pageNo] ? "hover:border-deal" : "cursor-default"}`}
                       >
                         {row.category ? CATEGORY_META[row.category].emoji : "🏷️"}
                       </button>
@@ -346,6 +377,13 @@ export function FlierReviewTable({
       </div>
 
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      {cropTarget && pageImages[cropTarget.pageNo] && (
+        <CropEditor
+          imageUrl={pageImages[cropTarget.pageNo]}
+          onSave={(box) => saveManualCrop(cropTarget, box)}
+          onClose={() => setCropTarget(null)}
+        />
+      )}
     </div>
   );
 }

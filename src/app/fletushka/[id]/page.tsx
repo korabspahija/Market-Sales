@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FlierPagesGallery } from "@/components/FlierPagesGallery";
 import { SaleCard } from "@/components/SaleCard";
 import { formatDateFull } from "@/lib/format";
 import { getPublicFlierCached } from "@/lib/sales";
@@ -60,18 +61,7 @@ export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]"
           <h2 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-ink-soft">
             Fletushka origjinale
           </h2>
-          <div className="chip-row -mx-4 flex gap-2 overflow-x-auto px-4">
-            {flier.pages.map((page) => (
-              <a key={page.id} href={page.imageUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={page.imageUrl}
-                  alt={`Faqja ${page.pageNo}`}
-                  className="h-36 w-26 rounded-xl border border-line object-cover transition hover:opacity-90"
-                />
-              </a>
-            ))}
-          </div>
+          <FlierPagesGallery pages={flier.pages} />
         </section>
       )}
 

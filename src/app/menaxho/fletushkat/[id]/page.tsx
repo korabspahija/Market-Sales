@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { FlierPagesGallery } from "@/components/FlierPagesGallery";
 import { FlierProcessRunner } from "@/components/FlierProcessRunner";
 import { FlierReviewTable, type ReviewRow } from "@/components/FlierReviewTable";
 import { RetryFailedPagesButton } from "@/components/RetryFailedPagesButton";
@@ -86,20 +87,15 @@ export default async function FlierDetailPage(props: PageProps<"/menaxho/fletush
       </div>
 
       {/* page thumbnails */}
-      <div className="chip-row -mx-4 flex gap-2 overflow-x-auto px-4">
-        {flier.pages.map((page) => (
-          <a key={page.id} href={page.imageUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={page.imageUrl}
-              alt={`Faqja ${page.pageNo}`}
-              className={`h-28 w-20 rounded-lg border object-cover ${
-                page.status === "FAILED" ? "border-deal opacity-60" : "border-line"
-              }`}
-            />
-          </a>
-        ))}
-      </div>
+      <FlierPagesGallery
+        size="sm"
+        pages={flier.pages.map((page) => ({
+          id: page.id,
+          pageNo: page.pageNo,
+          imageUrl: page.imageUrl,
+          failed: page.status === "FAILED",
+        }))}
+      />
 
       {pendingPages > 0 ? (
         <FlierProcessRunner flierId={flier.id} pagesTotal={flier.pages.length} pagesDone={pagesDone} />
@@ -120,6 +116,7 @@ export default async function FlierDetailPage(props: PageProps<"/menaxho/fletush
               initialRows={rows}
               defaultStartDate={toDateInput(flier.startsAt ?? today)}
               defaultEndDate={toDateInput(flier.endsAt ?? inAWeek)}
+              pageImages={Object.fromEntries(flier.pages.map((p) => [p.pageNo, p.imageUrl]))}
             />
           ) : (
             <div className="rounded-3xl border border-dashed border-line bg-white px-6 py-12 text-center">

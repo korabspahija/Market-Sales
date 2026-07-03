@@ -40,6 +40,7 @@ export default async function EditSalePage(props: PageProps<"/menaxho/[id]/ndrys
           <SaleForm
             mode="edit"
             saleId={sale.id}
+            flierPageUrl={sale.flierPageUrl}
             defaults={{
               productName: sale.productName,
               category: sale.category,

@@ -1,26 +1,16 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { computeCropRects } from "@/lib/crop";
 import { prisma } from "@/lib/db";
 import { extractFlierPage, type ExtractionResult } from "@/lib/extraction";
+import { loadImageBuffer } from "@/lib/flierImages";
 import { getSession } from "@/lib/session";
 import { saveImageBuffer } from "@/lib/storage";
-
-async function loadPageBuffer(imageUrl: string): Promise<Buffer> {
-  if (imageUrl.startsWith("http")) {
-    const res = await fetch(imageUrl);
-    if (!res.ok) throw new Error(`S'u lexua imazhi i faqes (${res.status}).`);
-    return Buffer.from(await res.arrayBuffer());
-  }
-  return readFile(path.join(process.cwd(), "public", imageUrl.replace(/^\//, "")));
-}
 
 /** Crop every located item out of the page; failures degrade to null (category icon). */
 async function cropItems(imageUrl: string, result: ExtractionResult): Promise<(string | null)[]> {
   try {
-    const buffer = await loadPageBuffer(imageUrl);
+    const buffer = await loadImageBuffer(imageUrl);
     const meta = await sharp(buffer).metadata();
     if (!meta.width || !meta.height) return result.items.map(() => null);
 
