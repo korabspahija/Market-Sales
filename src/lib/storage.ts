@@ -47,9 +47,13 @@ async function saveBytes(buffer: Buffer, contentType: string): Promise<string> {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
     const bucket = process.env.SUPABASE_STORAGE_BUCKET || "zbritje-images";
+    // Blob, not raw Buffer: storage-js sends Blobs via multipart (byte-safe),
+    // while raw buffers go through the patched fetch which corrupted
+    // sharp-produced buffers in production (UTF-8 mangling)
+    const blob = new Blob([new Uint8Array(buffer)], { type: contentType });
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(fileName, buffer, { contentType });
+      .upload(fileName, blob, { contentType });
     if (error) throw new Error(`Ngarkimi i imazhit dështoi: ${error.message}`);
     return supabase.storage.from(bucket).getPublicUrl(fileName).data.publicUrl;
   }
