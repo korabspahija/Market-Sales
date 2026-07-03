@@ -12,7 +12,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://aksione.com"),
+  metadataBase: new URL("https://www.aksione.com"),
   title: {
     default: "Aksione — Ofertat e marketeve në Kosovë",
     template: "%s · Aksione",

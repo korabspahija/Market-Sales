@@ -15,6 +15,7 @@ import {
 } from "@/lib/format";
 import { getChainStoresCached, getSaleCached, getVisibleSale, isSaleActive } from "@/lib/sales";
 import { getSession } from "@/lib/session";
+import { absoluteUrl } from "@/lib/site";
 
 export async function generateMetadata(props: PageProps<"/oferta/[id]">): Promise<Metadata> {
   const { id } = await props.params;
@@ -27,6 +28,7 @@ export async function generateMetadata(props: PageProps<"/oferta/[id]">): Promis
   return {
     title,
     description,
+    alternates: { canonical: `/oferta/${id}` },
     openGraph: { title, description, type: "website" },
   };
 }
@@ -52,8 +54,30 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
 
   const stores = await getChainStoresCached(sale.chainId);
 
+  // schema.org markup so search engines can show the price and discount
+  const jsonLd = active
+    ? {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        name: sale.productName,
+        image: absoluteUrl(sale.imageUrl),
+        offers: {
+          "@type": "Offer",
+          url: absoluteUrl(`/oferta/${sale.id}`),
+          price: (sale.newPriceCents / 100).toFixed(2),
+          priceCurrency: "EUR",
+          priceValidUntil: sale.endsAt.toISOString().slice(0, 10),
+          availability: "https://schema.org/InStock",
+          seller: { "@type": "Organization", name: sale.chain.name },
+        },
+      }
+    : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-4">
+      {jsonLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      )}
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-soft transition hover:text-ink"

@@ -10,7 +10,10 @@ import { getPublicFlierCached } from "@/lib/sales";
 export async function generateMetadata(props: PageProps<"/fletushka/[id]">): Promise<Metadata> {
   const { id } = await props.params;
   const data = await getPublicFlierCached(id);
-  return { title: data ? `Fletushka e ${data.flier.chain.name}` : "Fletushka" };
+  return {
+    title: data ? `Fletushka e ${data.flier.chain.name}` : "Fletushka",
+    alternates: { canonical: `/fletushka/${id}` },
+  };
 }
 
 export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]">) {

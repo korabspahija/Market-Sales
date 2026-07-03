@@ -3,9 +3,28 @@ import { SaleCard } from "@/components/SaleCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SortSelect } from "@/components/SortSelect";
 import { Category } from "@/generated/prisma/enums";
+import type { Metadata } from "next";
 import { trackEvent } from "@/lib/analytics";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
 import { getActiveSalesCached, getChainsCached, type SaleSort } from "@/lib/sales";
+import { SITE_URL } from "@/lib/site";
+
+// filtered/search variants collapse to the homepage for search engines
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
+
+const WEBSITE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Aksione",
+  url: `${SITE_URL}/`,
+  potentialAction: {
+    "@type": "SearchAction",
+    target: { "@type": "EntryPoint", urlTemplate: `${SITE_URL}/?q={search_term_string}` },
+    "query-input": "required name=search_term_string",
+  },
+};
 
 function isCategory(value: string | undefined): value is Category {
   return value !== undefined && value in Category;
@@ -53,6 +72,10 @@ export default async function HomePage(props: PageProps<"/">) {
 
   return (
     <div className="space-y-5">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }}
+      />
       <section className="rounded-3xl bg-ink px-5 py-7 text-white md:px-8 md:py-9">
         <h1 className="max-w-xl text-2xl font-extrabold leading-tight tracking-tight md:text-3xl">
           Aksionet e marketeve të Kosovës, <span className="text-red-400">në një vend</span>

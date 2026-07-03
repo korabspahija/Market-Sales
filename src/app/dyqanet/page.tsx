@@ -4,6 +4,7 @@ import { getStoresPageDataCached } from "@/lib/sales";
 
 export const metadata: Metadata = {
   title: "Dyqanet",
+  alternates: { canonical: "/dyqanet" },
 };
 
 export default async function StoresPage(props: PageProps<"/dyqanet">) {
