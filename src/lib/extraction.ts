@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Category, SizeUnit } from "@/generated/prisma/enums";
 
+export type BoundingBox = { x0: number; y0: number; x1: number; y1: number };
+
 export type ExtractedItem = {
   productName: string;
   sizeValue: number | null;
@@ -10,11 +12,18 @@ export type ExtractedItem = {
   newPriceEur: number;
   discountPercent: number | null;
   category: Category | null;
+  /** 1-based grid position when the page is a regular product grid */
+  gridRow: number | null;
+  gridCol: number | null;
+  /** normalized 0..1 box of the product card (photo + name + price) */
+  box: BoundingBox | null;
 };
 
 export type ExtractionResult = {
   validFrom: string | null;
   validTo: string | null;
+  gridRows: number | null;
+  gridCols: number | null;
   items: ExtractedItem[];
 };
 
@@ -24,16 +33,18 @@ const UNIT_VALUES = Object.values(SizeUnit);
 const RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["validFrom", "validTo", "items"],
+  required: ["validFrom", "validTo", "gridRows", "gridCols", "items"],
   properties: {
     validFrom: { type: ["string", "null"], description: "Data e fillimit të vlefshmërisë (YYYY-MM-DD) nëse shkruhet në fletushkë" },
     validTo: { type: ["string", "null"], description: "Data e mbarimit të vlefshmërisë (YYYY-MM-DD) nëse shkruhet në fletushkë" },
+    gridRows: { type: ["number", "null"], description: "Numri i rreshtave nëse produktet janë në rrjetë të rregullt" },
+    gridCols: { type: ["number", "null"], description: "Numri i kolonave nëse produktet janë në rrjetë të rregullt" },
     items: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["productName", "sizeValue", "sizeUnit", "oldPriceEur", "newPriceEur", "discountPercent", "category"],
+        required: ["productName", "sizeValue", "sizeUnit", "oldPriceEur", "newPriceEur", "discountPercent", "category", "gridRow", "gridCol", "box"],
         properties: {
           productName: { type: "string", description: "Emri i produktit saktësisht siç shkruhet, me ë/ç" },
           sizeValue: { type: ["number", "null"], description: "Vlera numerike e madhësisë, p.sh. 750 për '750 ml'" },
@@ -42,6 +53,20 @@ const RESPONSE_SCHEMA = {
           newPriceEur: { type: "number", description: "Çmimi i ri i ofertës në euro" },
           discountPercent: { type: ["number", "null"], description: "Përqindja e zbritjes siç shkruhet në etiketë, p.sh. 25 për '-25%'" },
           category: { type: ["string", "null"], enum: [...CATEGORY_VALUES, null] },
+          gridRow: { type: ["number", "null"], description: "Rreshti i produktit në rrjetë, 1 = më larti" },
+          gridCol: { type: ["number", "null"], description: "Kolona e produktit në rrjetë, 1 = më e majta" },
+          box: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            required: ["x0", "y0", "x1", "y1"],
+            description: "Kutia e përafërt e kartës së produktit (foto + emër + çmim), koordinata të normalizuara 0..1",
+            properties: {
+              x0: { type: "number", description: "skaji i majtë (0..1)" },
+              y0: { type: "number", description: "skaji i sipërm (0..1)" },
+              x1: { type: "number", description: "skaji i djathtë (0..1)" },
+              y1: { type: "number", description: "skaji i poshtëm (0..1)" },
+            },
+          },
         },
       },
     },
@@ -60,7 +85,9 @@ Rregullat:
 - Përqindja e zbritjes (p.sh. "-25%") zakonisht shkruhet pranë çmimit — raportoje te discountPercent si numër pozitiv (25). Nëse s'ka, null.
 - Madhësia merret nga TEKSTI i rreshtit të produktit (p.sh. "240g", "1.5l", "30 copë"), jo nga fotoja: "750 ml" → sizeValue 750, sizeUnit ML; "1 kg" → 1 KG; "30 copë" → 30 COPE; nëse s'shkruhet, null.
 - Kategoritë: BULMET (qumësht, djathë, vezë, jogurt), MISH, PEME_PERIME (pemë e perime të freskëta), BUKE_BRUMERA, PIJE (ujë, lëngje, kafe, çaj), EMBELSIRA_SNACKS, HIGJIENE_PASTRIM (detergjentë, kozmetikë, letër), USHQIME_BAZE (miell, oriz, vaj, sheqer, konserva).
-- Datat e vlefshmërisë nëse shkruhen diku në faqe (p.sh. "Oferta vlen 02–08 korrik"), formati YYYY-MM-DD. Nëse viti nuk shkruhet, supozo vitin që e bën ofertën aktuale ose të ardhshme në raport me sotën — KURRË vit të kaluar.`;
+- Datat e vlefshmërisë nëse shkruhen diku në faqe (p.sh. "Oferta vlen 02–08 korrik"), formati YYYY-MM-DD. Nëse viti nuk shkruhet, supozo vitin që e bën ofertën aktuale ose të ardhshme në raport me sotën — KURRË vit të kaluar.
+- Nëse produktet janë të renditur në rrjetë të rregullt, raporto gridRows dhe gridCols të faqes, dhe për çdo produkt pozicionin gridRow (1 = rreshti më i lartë) e gridCol (1 = kolona më e majtë). Nëse s'ka rrjetë, vendos null.
+- Për çdo produkt jep box: kutinë e përafërt që mbulon kartën e tij (fotoja + emri + çmimi), me koordinata të normalizuara 0..1 relative ndaj GJITHË imazhit (x0 majtas, y0 lart, x1 djathtas, y1 poshtë).`;
 }
 
 /**
@@ -155,6 +182,13 @@ export async function extractFlierPage(imageUrl: string): Promise<ExtractionResu
       if (!oldPriceEur && discountPercent) {
         oldPriceEur = Math.round((item.newPriceEur / (1 - discountPercent / 100)) * 100) / 100;
       }
+      const box =
+        item.box &&
+        [item.box.x0, item.box.y0, item.box.x1, item.box.y1].every((v) => v >= 0 && v <= 1) &&
+        item.box.x1 > item.box.x0 &&
+        item.box.y1 > item.box.y0
+          ? item.box
+          : null;
       return {
         productName: item.productName.trim().slice(0, 80),
         sizeValue: item.sizeValue && item.sizeValue > 0 ? item.sizeValue : null,
@@ -163,6 +197,9 @@ export async function extractFlierPage(imageUrl: string): Promise<ExtractionResu
         newPriceEur: item.newPriceEur,
         discountPercent,
         category: item.category && CATEGORY_VALUES.includes(item.category) ? item.category : null,
+        gridRow: item.gridRow && item.gridRow >= 1 && item.gridRow <= 30 ? Math.round(item.gridRow) : null,
+        gridCol: item.gridCol && item.gridCol >= 1 && item.gridCol <= 15 ? Math.round(item.gridCol) : null,
+        box,
       };
     });
   return parsed;

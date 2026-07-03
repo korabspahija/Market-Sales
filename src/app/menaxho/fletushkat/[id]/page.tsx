@@ -60,6 +60,8 @@ export default async function FlierDetailPage(props: PageProps<"/menaxho/fletush
     oldPrice: draft.oldPriceCents ? (draft.oldPriceCents / 100).toFixed(2) : "",
     newPrice: (draft.newPriceCents / 100).toFixed(2),
     discountPercent: draft.discountPercent,
+    imageUrl: draft.imageUrl,
+    useImage: draft.imageUrl !== null,
     duplicate: activeNames.has(normalizeSearch(draft.productName)),
   }));
 

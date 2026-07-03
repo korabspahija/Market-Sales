@@ -17,6 +17,10 @@ export type ReviewRow = {
   newPrice: string;
   /** the printed "-25%" badge, used to sanity-check the struck-through old price */
   discountPercent: number | null;
+  /** auto-cropped product image from the flier page */
+  imageUrl: string | null;
+  /** manager can reject a bad crop — the offer then uses the category icon */
+  useImage: boolean;
   duplicate: boolean;
 };
 
@@ -122,6 +126,7 @@ export function FlierReviewTable({
             sizeUnit: row.sizeUnit,
             oldPrice: row.oldPrice,
             newPrice: row.newPrice,
+            useImage: row.useImage,
           })),
           discardIds: [],
         };
@@ -179,6 +184,7 @@ export function FlierReviewTable({
                   }
                 />
               </th>
+              <th className="w-16 px-2 py-2.5">Foto</th>
               <th className="px-2 py-2.5">Produkti</th>
               <th className="w-24 px-2 py-2.5">Madhësia</th>
               <th className="w-24 px-2 py-2.5">Njësia</th>
@@ -196,6 +202,37 @@ export function FlierReviewTable({
                 <tr key={row.draftId} className={invalid ? "bg-deal-soft/60" : selected ? "bg-mint-soft/30" : ""}>
                   <td className="px-3 py-2">
                     <input type="checkbox" checked={selected} onChange={() => toggle(row.draftId)} />
+                  </td>
+                  <td className="px-2 py-2">
+                    {row.imageUrl && row.useImage ? (
+                      <div className="relative h-12 w-12">
+                        <a href={row.imageUrl} target="_blank" rel="noopener noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={row.imageUrl}
+                            alt=""
+                            className="h-12 w-12 rounded-lg border border-line bg-white object-contain"
+                          />
+                        </a>
+                        <button
+                          type="button"
+                          title="Hiq imazhin — përdor ikonën e kategorisë"
+                          onClick={() => updateRow(row.draftId, { useImage: false })}
+                          className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[9px] font-bold text-white hover:bg-deal"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        title={row.imageUrl ? "Rikthe imazhin e prerë nga fletushka" : "S'u gjet imazh — përdoret ikona e kategorisë"}
+                        onClick={() => row.imageUrl && updateRow(row.draftId, { useImage: true })}
+                        className={`flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-line text-xl ${row.imageUrl ? "cursor-pointer hover:border-ink/40" : "cursor-default"}`}
+                      >
+                        {row.category ? CATEGORY_META[row.category].emoji : "🏷️"}
+                      </button>
+                    )}
                   </td>
                   <td className="px-2 py-2">
                     <input

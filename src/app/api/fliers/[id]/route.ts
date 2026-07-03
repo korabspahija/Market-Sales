@@ -10,7 +10,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
   if (!session) return NextResponse.json({ error: "E paautorizuar." }, { status: 401 });
 
   const { id } = await ctx.params;
-  const flier = await prisma.flier.findUnique({ where: { id }, include: { drafts: true } });
+  const flier = await prisma.flier.findUnique({
+    where: { id },
+    include: { drafts: true, pages: true },
+  });
   if (!flier || flier.chainId !== session.chainId) {
     return NextResponse.json({ error: "Fletushka nuk u gjet." }, { status: 404 });
   }
@@ -21,35 +24,40 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
     return NextResponse.json({ error: firstZodError(parsed.error) }, { status: 400 });
   }
 
-  const draftIds = new Set(flier.drafts.map((d) => d.id));
+  const draftsById = new Map(flier.drafts.map((d) => [d.id, d]));
   for (const row of parsed.data.publish) {
-    if (!draftIds.has(row.draftId)) {
+    if (!draftsById.has(row.draftId)) {
       return NextResponse.json({ error: "Njëri nga artikujt nuk i përket kësaj fletushke." }, { status: 400 });
     }
   }
 
+  const pagesByNo = new Map(flier.pages.map((p) => [p.pageNo, p.imageUrl]));
   const { startsAt, endsAt } = saleDateRange(parsed.data);
 
   await prisma.sale.createMany({
-    data: parsed.data.publish.map((row) => ({
-      chainId: flier.chainId,
-      flierId: flier.id,
-      productName: row.productName,
-      searchName: normalizeSearch(row.productName),
-      category: row.category,
-      sizeValue: row.sizeValue,
-      sizeUnit: row.sizeUnit,
-      oldPriceCents: row.oldPrice,
-      newPriceCents: row.newPrice,
-      imageUrl: `/categories/${row.category}.svg`,
-      startsAt,
-      endsAt,
-    })),
+    data: parsed.data.publish.map((row) => {
+      const draft = draftsById.get(row.draftId)!;
+      return {
+        chainId: flier.chainId,
+        flierId: flier.id,
+        flierPageUrl: pagesByNo.get(draft.pageNo) ?? null,
+        productName: row.productName,
+        searchName: normalizeSearch(row.productName),
+        category: row.category,
+        sizeValue: row.sizeValue,
+        sizeUnit: row.sizeUnit,
+        oldPriceCents: row.oldPrice,
+        newPriceCents: row.newPrice,
+        imageUrl: row.useImage && draft.imageUrl ? draft.imageUrl : `/categories/${row.category}.svg`,
+        startsAt,
+        endsAt,
+      };
+    }),
   });
 
   const processedIds = [
     ...parsed.data.publish.map((row) => row.draftId),
-    ...parsed.data.discardIds.filter((discardId) => draftIds.has(discardId)),
+    ...parsed.data.discardIds.filter((discardId) => draftsById.has(discardId)),
   ];
   await prisma.draftSale.deleteMany({ where: { id: { in: processedIds }, flierId: flier.id } });
 

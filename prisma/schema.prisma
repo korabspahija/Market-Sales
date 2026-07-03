@@ -66,6 +66,8 @@ model Sale {
   // set when the offer was published from an uploaded flier
   flierId       String?
   flier         Flier?   @relation(fields: [flierId], references: [id], onDelete: SetNull)
+  // the flier page image the offer came from — shown as the source thumbnail
+  flierPageUrl  String?
   productName   String
   // accent-folded lowercase copy of productName (ë→e, ç→c) for accent-insensitive search
   searchName    String
@@ -141,5 +143,7 @@ model DraftSale {
   newPriceCents Int
   // the printed "-25%" badge — used to cross-check the struck-through old price
   discountPercent Int?
+  // auto-cropped product image from the flier page (null -> category icon)
+  imageUrl      String?
   createdAt     DateTime  @default(now())
 }

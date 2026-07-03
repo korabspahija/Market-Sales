@@ -1,7 +1,55 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { NextResponse } from "next/server";
+import sharp from "sharp";
+import { computeCropRects } from "@/lib/crop";
 import { prisma } from "@/lib/db";
-import { extractFlierPage } from "@/lib/extraction";
+import { extractFlierPage, type ExtractionResult } from "@/lib/extraction";
 import { getSession } from "@/lib/session";
+import { saveImageBuffer } from "@/lib/storage";
+
+async function loadPageBuffer(imageUrl: string): Promise<Buffer> {
+  if (imageUrl.startsWith("http")) {
+    const res = await fetch(imageUrl);
+    if (!res.ok) throw new Error(`S'u lexua imazhi i faqes (${res.status}).`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  return readFile(path.join(process.cwd(), "public", imageUrl.replace(/^\//, "")));
+}
+
+/** Crop every located item out of the page; failures degrade to null (category icon). */
+async function cropItems(imageUrl: string, result: ExtractionResult): Promise<(string | null)[]> {
+  try {
+    const buffer = await loadPageBuffer(imageUrl);
+    const meta = await sharp(buffer).metadata();
+    if (!meta.width || !meta.height) return result.items.map(() => null);
+
+    const rects = await computeCropRects(
+      result.items,
+      { rows: result.gridRows, cols: result.gridCols },
+      buffer,
+      meta.width,
+      meta.height,
+    );
+    return Promise.all(
+      rects.map(async (rect) => {
+        if (!rect) return null;
+        try {
+          const crop = await sharp(buffer)
+            .extract(rect)
+            .resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true })
+            .jpeg({ quality: 82 })
+            .toBuffer();
+          return await saveImageBuffer(crop, "image/jpeg");
+        } catch {
+          return null;
+        }
+      }),
+    );
+  } catch {
+    return result.items.map(() => null);
+  }
+}
 
 // one vision call per invocation — the client loops until done
 export const maxDuration = 60;
@@ -42,8 +90,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
     const result = await extractFlierPage(page.imageUrl);
 
     if (result.items.length > 0) {
+      const crops = await cropItems(page.imageUrl, result);
       await prisma.draftSale.createMany({
-        data: result.items.map((item) => ({
+        data: result.items.map((item, i) => ({
           flierId: flier.id,
           pageNo: page.pageNo,
           productName: item.productName,
@@ -53,6 +102,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/fliers/[id]
           oldPriceCents: item.oldPriceEur ? Math.round(item.oldPriceEur * 100) : null,
           newPriceCents: Math.round(item.newPriceEur * 100),
           discountPercent: item.discountPercent,
+          imageUrl: crops[i],
         })),
       });
     }

@@ -70,6 +70,8 @@ const draftRowSchema = z
     sizeUnit: z.enum(SizeUnit, { error: "Zgjidh njësinë për çdo artikull të zgjedhur." }),
     oldPrice: priceToCents,
     newPrice: priceToCents,
+    /** false when the manager rejected the auto-crop for this row */
+    useImage: z.boolean().default(true),
   })
   .refine((row) => row.newPrice < row.oldPrice, {
     message: "Çmimi i ri duhet të jetë më i ulët se çmimi i vjetër.",

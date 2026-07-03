@@ -130,9 +130,19 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
           {sale.flierId && (
             <Link
               href={`/fletushka/${sale.flierId}`}
-              className="flex items-center justify-between rounded-2xl border border-line px-4 py-3 text-sm font-bold transition hover:border-ink/30 hover:bg-paper"
+              className="flex items-center gap-3 rounded-2xl border border-line px-4 py-3 text-sm font-bold transition hover:border-ink/30 hover:bg-paper"
             >
-              📄 Shiko artikujt tjerë nga fletushka
+              {sale.flierPageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={sale.flierPageUrl}
+                  alt="Fletushka"
+                  className="h-14 w-10 shrink-0 rounded-md border border-line object-cover"
+                />
+              ) : (
+                <span className="text-xl">📄</span>
+              )}
+              <span className="flex-1">Shiko artikujt tjerë nga fletushka</span>
               <span className="text-ink-soft">→</span>
             </Link>
           )}

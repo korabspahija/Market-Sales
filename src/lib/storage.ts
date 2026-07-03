@@ -27,7 +27,18 @@ export function validateImage(file: File, maxBytes: number = MAX_IMAGE_BYTES): s
  * "supabase" (prod: Supabase Storage public bucket).
  */
 export async function saveImage(file: File): Promise<string> {
-  const fileName = `${randomUUID()}${EXTENSIONS[file.type]}`;
+  return saveBytes(Buffer.from(await file.arrayBuffer()), file.type);
+}
+
+/** Same as saveImage but for server-generated images (e.g. flier crops). */
+export async function saveImageBuffer(buffer: Buffer, contentType: string): Promise<string> {
+  return saveBytes(buffer, contentType);
+}
+
+async function saveBytes(buffer: Buffer, contentType: string): Promise<string> {
+  const extension = EXTENSIONS[contentType];
+  if (!extension) throw new Error(`Format i papritur imazhi: ${contentType}`);
+  const fileName = `${randomUUID()}${extension}`;
 
   if (resolveDriver() === "supabase") {
     const { createClient } = await import("@supabase/supabase-js");
@@ -38,14 +49,14 @@ export async function saveImage(file: File): Promise<string> {
     const bucket = process.env.SUPABASE_STORAGE_BUCKET || "zbritje-images";
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(fileName, file, { contentType: file.type });
+      .upload(fileName, buffer, { contentType });
     if (error) throw new Error(`Ngarkimi i imazhit dështoi: ${error.message}`);
     return supabase.storage.from(bucket).getPublicUrl(fileName).data.publicUrl;
   }
 
   const uploadDir = path.join(process.cwd(), "public", "uploads");
   await mkdir(uploadDir, { recursive: true });
-  await writeFile(path.join(uploadDir, fileName), Buffer.from(await file.arrayBuffer()));
+  await writeFile(path.join(uploadDir, fileName), buffer);
   return `/uploads/${fileName}`;
 }
 
