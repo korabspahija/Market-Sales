@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FlierPagesGallery } from "@/components/FlierPagesGallery";
 import { SaleCard } from "@/components/SaleCard";
+import { trackEvent } from "@/lib/analytics";
 import { formatDateFull } from "@/lib/format";
 import { getPublicFlierCached } from "@/lib/sales";
 
@@ -18,6 +19,8 @@ export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]"
   if (!data) notFound();
 
   const { flier, sales } = data;
+
+  trackEvent("flier_view", { flierId: flier.id, chain: flier.chain.slug });
 
   return (
     <div className="space-y-5">

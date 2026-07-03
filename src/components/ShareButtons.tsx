@@ -2,22 +2,33 @@
 
 import { useState } from "react";
 
-export function ShareButtons({ title, text }: { title: string; text: string }) {
+export function ShareButtons({ title, text, saleId }: { title: string; text: string; saleId?: string }) {
   const [copied, setCopied] = useState(false);
 
   function shareUrl(): string {
     return window.location.href;
   }
 
+  function track(channel: string) {
+    const payload = JSON.stringify({ type: "share", data: { channel, saleId: saleId ?? "" } });
+    // sendBeacon survives the page being backgrounded by the share sheet
+    if (!navigator.sendBeacon?.("/api/events", new Blob([payload], { type: "application/json" }))) {
+      fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
+    }
+  }
+
   function openWhatsApp() {
+    track("whatsapp");
     window.open(`https://wa.me/?text=${encodeURIComponent(`${text}\n${shareUrl()}`)}`, "_blank");
   }
 
   function openViber() {
+    track("viber");
     window.location.href = `viber://forward?text=${encodeURIComponent(`${text}\n${shareUrl()}`)}`;
   }
 
   async function shareNative() {
+    track("native");
     if (navigator.share) {
       try {
         await navigator.share({ title, text, url: shareUrl() });

@@ -133,6 +133,16 @@ model FlierPage {
   @@unique([flierId, pageNo])
 }
 
+// anonymous usage events (searches, views, shares) — no personal data
+model Event {
+  id        String   @id @default(cuid())
+  type      String
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+}
+
 // AI-extracted offer awaiting manager validation — nothing here is public
 model DraftSale {
   id            String    @id @default(cuid())

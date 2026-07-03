@@ -3,6 +3,7 @@ import { SaleCard } from "@/components/SaleCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SortSelect } from "@/components/SortSelect";
 import { Category } from "@/generated/prisma/enums";
+import { trackEvent } from "@/lib/analytics";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
 import { getActiveSalesCached, getChainsCached, type SaleSort } from "@/lib/sales";
 
@@ -44,6 +45,11 @@ export default async function HomePage(props: PageProps<"/">) {
   ]);
 
   const hasFilters = Boolean(q || chainSlug || category);
+
+  if (q) trackEvent("search", { q: q.toLowerCase().slice(0, 60), results: sales.length });
+  else if (chainSlug || category || sort !== "zbritja") {
+    trackEvent("filter_use", { chain: chainSlug || "", category: category ?? "", sort });
+  }
 
   return (
     <div className="space-y-5">

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShareButtons } from "@/components/ShareButtons";
+import { trackEvent } from "@/lib/analytics";
 import { CATEGORY_META } from "@/lib/categories";
 import {
   discountPercent,
@@ -40,6 +41,14 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
   const saved = sale.oldPriceCents - sale.newPriceCents;
   const meta = CATEGORY_META[sale.category];
   const active = isSaleActive(sale);
+
+  if (active) {
+    trackEvent("offer_view", {
+      saleId: sale.id,
+      chain: sale.chain.slug,
+      product: sale.searchName.slice(0, 60),
+    });
+  }
 
   const stores = await getChainStoresCached(sale.chainId);
 
@@ -119,6 +128,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
           </div>
 
           <ShareButtons
+            saleId={sale.id}
             title={`${sale.productName} -${percent}% te ${sale.chain.name}`}
             text={`${sale.productName} -${percent}% te ${sale.chain.name}: ${formatPrice(sale.newPriceCents)} në vend të ${formatPrice(sale.oldPriceCents)} — vlen deri më ${formatDateFull(sale.endsAt)} 🛒`}
           />
