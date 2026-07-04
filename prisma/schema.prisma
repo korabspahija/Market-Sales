@@ -101,6 +101,9 @@ model Flier {
   id        String      @id @default(cuid())
   chainId   String
   chain     Chain       @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  // identity of the source when auto-fetched from the chain's website — used
+  // to avoid importing the same flier twice
+  sourceKey String?     @unique
   status    FlierStatus @default(PROCESSING)
   // flier-level validity extracted from the pages; prefills the review form
   startsAt  DateTime?
