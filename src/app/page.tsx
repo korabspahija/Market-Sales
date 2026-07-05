@@ -106,6 +106,12 @@ export default async function HomePage(props: PageProps<"/">) {
             }}
           />
         </div>
+        <Link
+          href="/lista"
+          className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-white/80 underline-offset-4 transition hover:text-white hover:underline"
+        >
+          📝 Ke listë blerjesh? Krahaso ku është më lirë →
+        </Link>
       </section>
 
       {/* chain chips */}

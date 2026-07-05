@@ -3,6 +3,7 @@ import type { Chain, Sale } from "@/generated/prisma/client";
 import type { Category, FlierStatus } from "@/generated/prisma/enums";
 import { prisma } from "./db";
 import { discountPercent } from "./format";
+import { expandQuery } from "./synonyms";
 import { normalizeSearch } from "./text";
 
 export type SaleWithChain = Sale & { chain: Chain };
@@ -40,17 +41,29 @@ export function currentFlierWhere(now = new Date()) {
 export async function getActiveSales(filters: SaleFilters = {}): Promise<SaleWithChain[]> {
   const { q, chainSlug, category, sort = "zbritja" } = filters;
 
-  const sales = await prisma.sale.findMany({
+  // dialect/synonym expansion: "tamel" also searches "qumesht", and
+  // category words ("bylmet") become a category filter
+  const expansion = q ? expandQuery(normalizeSearch(q)) : null;
+  const effectiveCategory = category ?? expansion?.category;
+
+  let sales = await prisma.sale.findMany({
     where: {
       ...activeSaleWhere(),
-      ...(q ? { searchName: { contains: normalizeSearch(q) } } : {}),
+      ...(expansion && !expansion.category
+        ? { OR: expansion.terms.map((term) => ({ searchName: { contains: term } })) }
+        : {}),
       ...(chainSlug ? { chain: { slug: chainSlug } } : {}),
-      ...(category ? { category } : {}),
+      ...(effectiveCategory ? { category: effectiveCategory } : {}),
     },
     include: { chain: true },
     orderBy:
       sort === "cmimi" ? { newPriceCents: "asc" } : sort === "rejat" ? { createdAt: "desc" } : undefined,
   });
+
+  // typo fallback ("qumsht", "domatet"): trigram similarity in Postgres
+  if (sales.length === 0 && expansion && !expansion.category) {
+    sales = await trigramSearch(normalizeSearch(q!), chainSlug, effectiveCategory);
+  }
 
   if (sort === "zbritja") {
     sales.sort(
@@ -61,6 +74,36 @@ export async function getActiveSales(filters: SaleFilters = {}): Promise<SaleWit
   }
 
   return sales;
+}
+
+/** Fuzzy match on searchName via pg_trgm, active sales only. */
+async function trigramSearch(
+  qNorm: string,
+  chainSlug?: string,
+  category?: Category,
+): Promise<SaleWithChain[]> {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Sale"
+      WHERE "startsAt" <= now() AND "endsAt" > now()
+        AND similarity("searchName", ${qNorm}) > 0.3
+      ORDER BY similarity("searchName", ${qNorm}) DESC
+      LIMIT 60`;
+    if (rows.length === 0) return [];
+    const sales = await prisma.sale.findMany({
+      where: {
+        id: { in: rows.map((r) => r.id) },
+        ...(chainSlug ? { chain: { slug: chainSlug } } : {}),
+        ...(category ? { category } : {}),
+      },
+      include: { chain: true },
+    });
+    const order = new Map(rows.map((r, i) => [r.id, i]));
+    return sales.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+  } catch {
+    // extension missing or query failure — fuzzy search is best-effort
+    return [];
+  }
 }
 
 /** A single sale for the public detail page; null when missing or not active (unless the owning chain's manager is viewing). */

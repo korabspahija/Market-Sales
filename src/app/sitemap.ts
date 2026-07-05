@@ -32,6 +32,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.9,
     })),
     { url: `${SITE_URL}/fletushkat`, changeFrequency: "daily", priority: 0.9 },
+    { url: `${SITE_URL}/lista`, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/dyqanet`, changeFrequency: "weekly", priority: 0.7 },
     { url: `${SITE_URL}/rreth-nesh`, changeFrequency: "monthly", priority: 0.3 },
     { url: `${SITE_URL}/privatesia`, changeFrequency: "yearly", priority: 0.1 },

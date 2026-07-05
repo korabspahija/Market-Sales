@@ -14,6 +14,7 @@ export type EventType =
   | "flier_view"
   | "flier_list"
   | "chain_page"
+  | "list_compare"
   | "share";
 
 export function trackEvent(type: EventType, data: Record<string, string | number | boolean>): void {

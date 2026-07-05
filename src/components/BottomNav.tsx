@@ -19,6 +19,13 @@ const ITEMS = [
     ),
   },
   {
+    href: "/lista",
+    label: "Lista",
+    icon: (
+      <path d="M8 3.5h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21.5H8A1.5 1.5 0 0 1 6.5 20V5A1.5 1.5 0 0 1 8 3.5Z M9.5 8h5 M9.5 12h5 M9.5 16h3" />
+    ),
+  },
+  {
     href: "/dyqanet",
     label: "Dyqanet",
     icon: (
