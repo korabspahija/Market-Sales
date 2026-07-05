@@ -108,9 +108,22 @@ export default async function HomePage(props: PageProps<"/">) {
         </div>
         <Link
           href="/lista"
-          className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-white/80 underline-offset-4 transition hover:text-white hover:underline"
+          className="mt-3 flex w-full max-w-xl items-center justify-between gap-3 rounded-2xl bg-deal px-5 py-3.5 shadow-lg shadow-deal/25 transition hover:bg-deal-dark"
         >
-          📝 Ke listë blerjesh? Krahaso ku është më lirë →
+          <span className="flex min-w-0 items-center gap-2.5 font-bold text-white">
+            <span className="text-xl" aria-hidden>
+              📝
+            </span>
+            <span className="min-w-0">
+              Ke listë blerjesh?
+              <span className="block text-[13px] font-semibold text-white/85">
+                Ngjite dhe shih cili market ta jep më lirë
+              </span>
+            </span>
+          </span>
+          <span className="shrink-0 text-lg font-bold text-white" aria-hidden>
+            →
+          </span>
         </Link>
       </section>
 

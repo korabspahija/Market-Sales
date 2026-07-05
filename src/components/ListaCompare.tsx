@@ -1,11 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ChainResult } from "@/lib/basket";
 import { formatPrice } from "@/lib/format";
 
 const PLACEHOLDER = "qumësht 2L\nvezë\ndjathë\nbukë\ndetergjent";
+
+const STORAGE_KEY = "aksione-lista";
+// saved results go stale — offers change daily
+const RESULTS_TTL_MS = 12 * 3_600_000;
+
+type SavedState = {
+  text?: string;
+  results?: ChainResult[];
+  openChain?: string | null;
+  savedAt?: number;
+};
+
+function readSaved(): SavedState {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as SavedState;
+  } catch {
+    return {};
+  }
+}
+
+function writeSaved(patch: SavedState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...readSaved(), ...patch }));
+  } catch {
+    // storage full or blocked — persistence is best-effort
+  }
+}
 
 export function ListaCompare() {
   const [text, setText] = useState("");
@@ -13,6 +40,27 @@ export function ListaCompare() {
   const [openChain, setOpenChain] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hydrated = useRef(false);
+
+  // restore the last list (and, if fresh enough, its results) on return
+  // visits — localStorage is only readable after mount, so this one-time
+  // hydration legitimately sets state from an effect
+  useEffect(() => {
+    const saved = readSaved();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (typeof saved.text === "string") setText(saved.text);
+    if (saved.results && Date.now() - (saved.savedAt ?? 0) < RESULTS_TTL_MS) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setResults(saved.results);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpenChain(saved.openChain ?? saved.results[0]?.chain.id ?? null);
+    }
+    hydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (hydrated.current) writeSaved({ text });
+  }, [text]);
 
   async function compare() {
     const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -31,7 +79,9 @@ export function ListaCompare() {
       if (!res.ok) throw new Error();
       const data = (await res.json()) as { results: ChainResult[] };
       setResults(data.results);
-      setOpenChain(data.results[0]?.chain.id ?? null);
+      const first = data.results[0]?.chain.id ?? null;
+      setOpenChain(first);
+      writeSaved({ text, results: data.results, openChain: first, savedAt: Date.now() });
     } catch {
       setError("Diçka shkoi keq — provo prapë.");
     } finally {
@@ -83,7 +133,11 @@ export function ListaCompare() {
               <div key={result.chain.id} className="overflow-hidden rounded-3xl border border-line bg-white">
                 <button
                   type="button"
-                  onClick={() => setOpenChain(open ? null : result.chain.id)}
+                  onClick={() => {
+                    const next = open ? null : result.chain.id;
+                    setOpenChain(next);
+                    writeSaved({ openChain: next });
+                  }}
                   className="flex w-full items-center gap-3 p-4 text-left"
                 >
                   {index === 0 && (
