@@ -1,5 +1,5 @@
-/** Single place for contact details — swap the email to info@aksione.com once Cloudflare Email Routing is enabled. */
-export const CONTACT_EMAIL = "aksionet2026@gmail.com";
+/** Single place for contact details — info@ forwards via Cloudflare Email Routing. */
+export const CONTACT_EMAIL = "info@aksione.com";
 export const INSTAGRAM_URL = "https://www.instagram.com/aksione.kosova";
 export const SITE_NAME = "Aksione";
 /** primary domain — the apex redirects here */
