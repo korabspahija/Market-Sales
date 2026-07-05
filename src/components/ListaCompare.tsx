@@ -50,9 +50,7 @@ export function ListaCompare() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (typeof saved.text === "string") setText(saved.text);
     if (saved.results && Date.now() - (saved.savedAt ?? 0) < RESULTS_TTL_MS) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults(saved.results);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpenChain(saved.openChain ?? saved.results[0]?.chain.id ?? null);
     }
     hydrated.current = true;
