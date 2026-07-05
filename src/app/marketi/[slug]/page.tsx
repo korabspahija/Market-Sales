@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FlierPagesGallery } from "@/components/FlierPagesGallery";
+import { LoadMoreSales } from "@/components/LoadMoreSales";
 import { SaleCard } from "@/components/SaleCard";
 import { trackEvent } from "@/lib/analytics";
 import { formatDateFull } from "@/lib/format";
@@ -105,10 +106,15 @@ export default async function ChainPage(props: PageProps<"/marketi/[slug]">) {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {sales.map((sale) => (
-              <SaleCard key={sale.id} sale={sale} />
-            ))}
+          <div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {sales.slice(0, 48).map((sale) => (
+                <SaleCard key={sale.id} sale={sale} />
+              ))}
+            </div>
+            {sales.length > 48 && (
+              <LoadMoreSales filters={{ zinxhiri: chain.slug }} initialLoaded={48} total={sales.length} />
+            )}
           </div>
         )}
       </section>

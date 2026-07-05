@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LoadMoreSales } from "@/components/LoadMoreSales";
 import { SaleCard } from "@/components/SaleCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SortSelect } from "@/components/SortSelect";
@@ -30,6 +31,10 @@ const WEBSITE_JSON_LD = {
 function isCategory(value: string | undefined): value is Category {
   return value !== undefined && value in Category;
 }
+
+// 48 divides evenly by every grid width (2/3/4 columns), so appended pages
+// never leave a ragged row behind
+const PAGE_SIZE = 48;
 
 function buildQuery(
   base: Record<string, string | undefined>,
@@ -222,10 +227,24 @@ export default async function HomePage(props: PageProps<"/">) {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {sales.map((sale) => (
-            <SaleCard key={sale.id} sale={sale} />
-          ))}
+        <div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {sales.slice(0, PAGE_SIZE).map((sale) => (
+              <SaleCard key={sale.id} sale={sale} />
+            ))}
+          </div>
+          {sales.length > PAGE_SIZE && (
+            <LoadMoreSales
+              filters={{
+                q: q || undefined,
+                zinxhiri: chainSlug || undefined,
+                kategoria: category,
+                rendit: sort === "zbritja" ? undefined : sort,
+              }}
+              initialLoaded={PAGE_SIZE}
+              total={sales.length}
+            />
+          )}
         </div>
       )}
     </div>
