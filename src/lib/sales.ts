@@ -185,8 +185,16 @@ const cachedChainPage = unstable_cache(
         orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
       prisma.flier.findFirst({
-        // pages required: campaign imports are page-less and have no gallery
-        where: { chainId: chain.id, ...currentFlierWhere(), pages: { some: {} } },
+        // pages required (campaign imports are page-less); sale-less
+        // auto-published fliers are junk imports and never surface
+        where: {
+          chainId: chain.id,
+          pages: { some: {} },
+          AND: [
+            currentFlierWhere(),
+            { OR: [{ status: "REVIEW" }, { sales: { some: activeSaleWhere() } }] },
+          ],
+        },
         orderBy: { createdAt: "desc" },
         include: { pages: { orderBy: { pageNo: "asc" } } },
       }),
@@ -291,7 +299,11 @@ export type PublicFlierCard = {
 export async function getPublicFliersCached(): Promise<PublicFlierCard[]> {
   const { fliers, saleCounts } = await cachedPublicFliers();
   const counts = new Map(saleCounts.map((c) => [c.flierId, c._count._all]));
-  return fliers.map((f) => ({
+  return fliers
+    // auto-published fliers that yielded no offers are noise (e.g. a
+    // holiday-greeting post imported from Facebook) — never show them
+    .filter((f) => f.status === "REVIEW" || (counts.get(f.id) ?? 0) > 0)
+    .map((f) => ({
     id: f.id,
     chain: f.chain,
     cover: f.pages[0]?.thumbUrl ?? f.pages[0]?.imageUrl ?? null,

@@ -13,7 +13,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       select: { id: true, updatedAt: true },
     }),
     prisma.flier.findMany({
-      where: currentFlierWhere(),
+      where: {
+        AND: [
+          currentFlierWhere(),
+          { OR: [{ status: "REVIEW" }, { sales: { some: activeSaleWhere() } }] },
+        ],
+      },
       select: { id: true, createdAt: true },
     }),
     prisma.chain.findMany({ select: { slug: true } }),
