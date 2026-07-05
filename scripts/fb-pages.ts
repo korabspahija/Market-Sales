@@ -2,6 +2,8 @@
 // pages — logged out, no account involved — using the system Edge browser.
 // Chains that only publish fliers on Facebook get imported this way.
 import { createHash } from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 import { chromium } from "playwright-core";
 import sharp from "sharp";
 
@@ -16,10 +18,11 @@ const FB_PAGES: Array<{ chainSlug: string; handle: string }> = [
   { chainSlug: "albi-market", handle: "AlbiMarket" },
 ];
 
-// flier pages are big portrait-ish images; avatars/logos/banners are not
-// (Albi's album pages render at 472px — keep the floor under that)
+// Quality gate: the first import of a photo wins forever (the perceptual
+// dedupe hash is scale-stable), so never let a low-res feed thumbnail claim
+// a flier's identity — import only when the theater gave a real copy.
 const MIN_BYTES = 40_000;
-const MIN_WIDTH = 440;
+const MIN_WIDTH = 640;
 const MAX_PAGES_PER_POST = 10;
 const MAX_POSTS = 2;
 // theater visits per handle per run — more looks like scraping and earns
@@ -92,7 +95,8 @@ async function fullResolution(
   const page = await context.newPage();
   try {
     await page.goto(image.href, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForTimeout(2_200);
+    // human-ish pacing between theater visits
+    await page.waitForTimeout(1_800 + Math.floor(Math.random() * 1_500));
     await page.keyboard.press("Escape").catch(() => {});
     const url = (await page.evaluate(`(() => {
       const imgs = [...document.querySelectorAll("img")]
@@ -229,19 +233,26 @@ async function collectFromPhotosTab(
 
 /** Fliers found on the configured chains' public Facebook pages. */
 export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
-  let browser: import("playwright-core").Browser;
+  let context: import("playwright-core").BrowserContext;
   try {
-    browser = await chromium.launch({ channel: "msedge", headless: true });
+    // persistent profile: cookies (consent, datr) survive across runs, so
+    // the daily visit looks like a returning browser instead of a fresh bot
+    const profileDir = path.join(
+      process.env.LOCALAPPDATA ?? os.tmpdir(),
+      "aksione-fb-profile",
+    );
+    context = await chromium.launchPersistentContext(profileDir, {
+      channel: "msedge",
+      headless: true,
+      locale: "sq-AL",
+      viewport: { width: 1280, height: 900 },
+    });
   } catch (error) {
     log(`facebook: browser launch failed — ${error instanceof Error ? error.message : error}`);
     return [];
   }
 
   const fliers: FacebookFlier[] = [];
-  const context = await browser.newContext({
-    locale: "sq-AL",
-    viewport: { width: 1280, height: 900 },
-  });
   try {
     for (const { chainSlug, handle } of FB_PAGES) {
       try {
@@ -295,7 +306,6 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
     }
   } finally {
     await context.close();
-    await browser.close();
   }
   return fliers;
 }
