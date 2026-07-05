@@ -82,8 +82,9 @@ async function meridian(): Promise<FlierSource | null> {
   return { chainSlug: "meridian-express", sourceKey: `meridian:${hash(newest.url)}`, pdfUrl: newest.url };
 }
 
-export const FLIER_SOURCE_ADAPTERS: Array<() => Promise<FlierSource | null>> = [
-  vivaFresh,
-  interex,
-  meridian,
+// explicit names — minified function names are useless in cron logs
+export const FLIER_SOURCE_ADAPTERS: Array<{ name: string; fetch: () => Promise<FlierSource | null> }> = [
+  { name: "viva-fresh", fetch: vivaFresh },
+  { name: "interex", fetch: interex },
+  { name: "meridian-express", fetch: meridian },
 ];

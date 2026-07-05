@@ -38,9 +38,9 @@ export async function GET(request: Request) {
   for (const adapter of FLIER_SOURCE_ADAPTERS) {
     let source: FlierSource | null = null;
     try {
-      source = await adapter();
+      source = await adapter.fetch();
       if (!source) {
-        summary[adapter.name] = "no flier found at source";
+        summary[adapter.name] = "no fresh flier at source";
         continue;
       }
       const existing = await prisma.flier.findUnique({ where: { sourceKey: source.sourceKey } });
