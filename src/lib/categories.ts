@@ -12,6 +12,7 @@ export const CATEGORY_META: Record<
   EMBELSIRA_SNACKS: { label: "Ëmbëlsira & Snacks", emoji: "🍫", gradient: ["#FCE4EC", "#F8BBD0"] },
   HIGJIENE_PASTRIM: { label: "Higjienë & Pastrim", emoji: "🧴", gradient: ["#E8EAF6", "#C5CAE9"] },
   USHQIME_BAZE: { label: "Ushqime bazë", emoji: "🛒", gradient: ["#FFF3E0", "#FFE0B2"] },
+  TJERA: { label: "Të tjera", emoji: "🪑", gradient: ["#F3E5F5", "#E1BEE7"] },
 };
 
 export const CATEGORY_ORDER: Category[] = [
@@ -23,4 +24,5 @@ export const CATEGORY_ORDER: Category[] = [
   "EMBELSIRA_SNACKS",
   "HIGJIENE_PASTRIM",
   "USHQIME_BAZE",
+  "TJERA",
 ];

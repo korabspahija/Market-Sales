@@ -49,6 +49,7 @@ enum Category {
   EMBELSIRA_SNACKS
   HIGJIENE_PASTRIM
   USHQIME_BAZE
+  TJERA
 }
 
 enum SizeUnit {

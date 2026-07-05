@@ -188,7 +188,7 @@ export async function autoPublishFlier(flierId: string): Promise<number> {
   const pagesByNo = new Map(flier.pages.map((p) => [p.pageNo, p]));
   await prisma.sale.createMany({
     data: flier.drafts.map((draft) => {
-      const category = draft.category ?? "USHQIME_BAZE";
+      const category = draft.category ?? "TJERA";
       // no readable struck-through price: derive it from the printed discount
       // badge, or fall back to "no discount shown"
       const oldPriceCents =
