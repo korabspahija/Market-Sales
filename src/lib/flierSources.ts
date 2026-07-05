@@ -157,5 +157,13 @@ export const FLIER_SOURCE_ADAPTERS: Array<{ name: string; fetch: () => Promise<F
   { name: "meridian-express", fetch: meridian },
   { name: "spar", fetch: spar },
   { name: "express-store", fetch: expressStore },
+];
+
+/**
+ * Sources whose WAF blocks datacenter IPs — unreachable from Vercel, fetched
+ * by the laptop agent (scripts/local-fetch.ts) from a residential IP and
+ * uploaded via /api/ingest.
+ */
+export const LOCAL_FLIER_SOURCE_ADAPTERS: Array<{ name: string; fetch: () => Promise<FlierSource | null> }> = [
   { name: "albi-market", fetch: albi },
 ];
