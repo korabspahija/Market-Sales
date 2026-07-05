@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import type { BoundingBox, ExtractedItem } from "./extraction";
+import type { BoundingBox, ExtractedItem, LayoutRow } from "./extraction";
 
 export type CropRect = { left: number; top: number; width: number; height: number };
 
@@ -21,9 +21,23 @@ export async function computeCropRects(
   imageBuffer: Buffer,
   imageWidth: number,
   imageHeight: number,
+  layoutRows: LayoutRow[] | null = null,
 ): Promise<(CropRect | null)[]> {
   const none = items.map(() => null);
   if (items.length === 0) return none;
+
+  // preferred: the structure pass listed every card row (handles mixed
+  // layouts like a 5-card fruit row above 4-card dairy rows); items are
+  // extracted in reading order, so once the cell count matches the item
+  // count the mapping is simply sequential
+  if (layoutRows && layoutRows.length > 0) {
+    const cells = await rowCells(imageBuffer, layoutRows, items.length);
+    if (cells) {
+      return items.map((_item, index) =>
+        cells[index] ? toPixels(cells[index], imageWidth, imageHeight, 0.004) : null,
+      );
+    }
+  }
 
   // layout A (Meridian-style): one light panel on a colored frame, products
   // as content humps inside it. layout B (Interex-style): individual cards
@@ -64,6 +78,146 @@ export async function computeCropRects(
     if (!y || !x) return null;
     return toPixels({ x0: x[0], y0: y[0], x1: x[1], y1: y[1] }, imageWidth, imageHeight, 0.004);
   });
+}
+
+/**
+ * Cell boxes for every layout row, in reading order. Row y-ranges come from
+ * the structure pass (structurally right even when its card counts drift);
+ * the card count per row comes from the pixel column profile of that strip,
+ * with the model's stated counts as tie-breaker — whichever total matches
+ * the item count wins. Returns null when neither does.
+ */
+async function rowCells(
+  buffer: Buffer,
+  layoutRows: LayoutRow[],
+  itemCount: number,
+): Promise<BoundingBox[] | null> {
+  const panel = await detectContentPanel(buffer).catch(() => null);
+  const x0 = panel?.x0 ?? 0.03;
+  const x1 = panel?.x1 ?? 0.97;
+
+  // pixel row bands are precise and stable; the model's y-bands — and even
+  // its row count — drift between runs, so the pixel rows go first and the
+  // model's rows are only the fallback
+  let pxRows: LayoutRow[] | null = null;
+  if (panel) {
+    const profiles = await panelProfiles(buffer, panel).catch(() => null);
+    const bands = profiles ? bandsFromProfile(profiles.rowFraction, panel.y0, panel.y1) : null;
+    if (bands) {
+      pxRows = bands.map(([a, b], i) => ({
+        y0: a,
+        y1: b,
+        // the model's per-row counts only line up when it saw the same rows
+        cards: bands.length === layoutRows.length ? layoutRows[i].cards : 0,
+      }));
+    }
+  }
+
+  const candidates = pxRows ? [pxRows, layoutRows] : [layoutRows];
+  for (const rows of candidates) {
+    const detected: ([number, number][] | null)[] = [];
+    for (const row of rows) {
+      const strip: BoundingBox = { x0, y0: row.y0, x1, y1: row.y1 };
+      detected.push(await detectStripColumns(buffer, strip).catch(() => null));
+    }
+    if (process.env.CROP_DEBUG) {
+      console.log(
+        "[crop] strips:",
+        rows
+          .map((row, i) => `y ${row.y0.toFixed(2)}-${row.y1.toFixed(2)} model:${row.cards} px:${detected[i]?.length ?? "-"}`)
+          .join(" | "),
+      );
+    }
+
+    // pixel counts first (model counts fill undetected strips), whole-model
+    // counts second — accepted only when the total matches the item count
+    const pixelCounts = rows.map((row, i) => detected[i]?.length ?? row.cards);
+    const modelCounts = rows.map((row) => row.cards);
+    let counts: number[] | null = null;
+    for (const candidate of [pixelCounts, modelCounts]) {
+      if (candidate.every((c) => c > 0) && candidate.reduce((a, b) => a + b, 0) === itemCount) {
+        counts = candidate;
+        break;
+      }
+    }
+    if (!counts) continue;
+
+    const cells: BoundingBox[] = [];
+    rows.forEach((row, i) => {
+      const count = counts[i];
+      const bands = detected[i]?.length === count ? detected[i]! : uniformBands(x0, x1, count);
+      for (const x of bands) cells.push({ x0: x[0], y0: row.y0, x1: x[1], y1: row.y1 });
+    });
+    return cells;
+  }
+  return null;
+}
+
+function uniformBands(start: number, end: number, count: number): [number, number][] {
+  const step = (end - start) / count;
+  return Array.from({ length: count }, (_, i) => [start + i * step, start + (i + 1) * step]);
+}
+
+/** Column bands inside one horizontal strip, from its content profile. */
+export async function detectStripColumns(buffer: Buffer, strip: BoundingBox): Promise<[number, number][] | null> {
+  const meta = await sharp(buffer).metadata();
+  if (!meta.width || !meta.height) return null;
+  const region = {
+    left: Math.round(strip.x0 * meta.width),
+    top: Math.round(strip.y0 * meta.height),
+    width: Math.max(24, Math.round((strip.x1 - strip.x0) * meta.width)),
+    height: Math.max(24, Math.round((strip.y1 - strip.y0) * meta.height)),
+  };
+  const W = 240;
+  const H = Math.max(24, Math.round((region.height / region.width) * W));
+  const { data } = await sharp(buffer)
+    .extract(region)
+    .resize(W, H, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const channel = (x: number, y: number, c: number) => data[(y * W + x) * 3 + c];
+  const bg = [0, 1, 2].map((c) => {
+    const values: number[] = [];
+    for (let y = 0; y < H; y += 2) for (let x = 0; x < W; x += 2) values.push(channel(x, y, c));
+    return median(values);
+  });
+  const isContent = (x: number, y: number) =>
+    Math.abs(channel(x, y, 0) - bg[0]) + Math.abs(channel(x, y, 1) - bg[1]) + Math.abs(channel(x, y, 2) - bg[2]) > 60;
+
+  const colFraction = smooth(
+    Array.from({ length: W }, (_, x) => {
+      let n = 0;
+      for (let y = 0; y < H; y++) if (isContent(x, y)) n++;
+      return n / H;
+    }),
+  );
+  if (process.env.CROP_DEBUG) {
+    const compress = colFraction
+      .map((v) => (v > 0.5 ? "#" : v > 0.35 ? "*" : v > 0.2 ? "+" : v > 0.1 ? "." : " "))
+      .join("");
+    console.log(`[crop] strip y ${strip.y0.toFixed(2)}-${strip.y1.toFixed(2)} bg ${bg.join(",")}: ${compress}`);
+  }
+  const bands = bandsFromProfile(colFraction, strip.x0, strip.x1, 0.2, true);
+  return bands ? splitWideBands(bands) : null;
+}
+
+/**
+ * Two cards whose contents touch merge into one band about twice the typical
+ * width — split multiples of the typical width back into equal parts. A page
+ * with a genuinely double-width card fails the item-count cross-check
+ * afterwards and falls back, so a wrong split never reaches a crop.
+ */
+function splitWideBands(bands: [number, number][]): [number, number][] {
+  const typical = median(bands.map(([a, b]) => b - a));
+  const out: [number, number][] = [];
+  for (const [a, b] of bands) {
+    const parts = Math.max(1, Math.round((b - a) / typical));
+    const step = (b - a) / parts;
+    for (let i = 0; i < parts; i++) out.push([a + i * step, a + (i + 1) * step]);
+  }
+  return out;
 }
 
 /**
@@ -271,6 +425,21 @@ function clusterBands(extents: [number, number][], scale: number): [number, numb
  * valleys. Returns null when the layout isn't a clean grid.
  */
 export async function detectGridBands(buffer: Buffer, panel: BoundingBox): Promise<GridBands | null> {
+  const profiles = await panelProfiles(buffer, panel);
+  if (!profiles) return null;
+
+  const rowBands = bandsFromProfile(profiles.rowFraction, panel.y0, panel.y1);
+  const colBands = bandsFromProfile(profiles.colFraction, panel.x0, panel.x1);
+  if (!rowBands || !colBands) return null;
+  if (rowBands.length < 2 || rowBands.length > 10 || colBands.length < 2 || colBands.length > 8) return null;
+  return { rowBands, colBands };
+}
+
+/** Content-fraction profiles of the panel: humps are cards, valleys are gaps. */
+export async function panelProfiles(
+  buffer: Buffer,
+  panel: BoundingBox,
+): Promise<{ rowFraction: number[]; colFraction: number[] } | null> {
   const meta = await sharp(buffer).metadata();
   if (!meta.width || !meta.height) return null;
 
@@ -322,11 +491,7 @@ export async function detectGridBands(buffer: Buffer, panel: BoundingBox): Promi
     console.log("[crop] panel cols:", compress(colFraction));
   }
 
-  const rowBands = bandsFromProfile(rowFraction, panel.y0, panel.y1);
-  const colBands = bandsFromProfile(colFraction, panel.x0, panel.x1);
-  if (!rowBands || !colBands) return null;
-  if (rowBands.length < 2 || rowBands.length > 10 || colBands.length < 2 || colBands.length > 8) return null;
-  return { rowBands, colBands };
+  return { rowFraction, colFraction };
 }
 
 /**
@@ -334,12 +499,16 @@ export async function detectGridBands(buffer: Buffer, panel: BoundingBox): Promi
  * each expanded to the midpoint of its neighbouring valleys so the crop
  * keeps the text at the card edges.
  */
-function bandsFromProfile(
+export function bandsFromProfile(
   fraction: number[],
   normStart: number,
   normEnd: number,
   // gaps can carry stray content (headers bridging columns) — stay above that
   threshold = 0.2,
+  // between grid ROWS real small bands exist (discount-label strips), so
+  // holes from dropping them are normal; between COLUMNS in one row there
+  // is nothing, so a hole means a split card was dropped — reject those
+  rejectHoles = false,
 ): [number, number][] | null {
   const n = fraction.length;
   const runs: [number, number][] = [];
@@ -354,8 +523,10 @@ function bandsFromProfile(
   }
 
   // grid gaps can be as thin as 1px at this scale, so bridging noise specks
-  // can also swallow real gaps — try unbridged first, bridged as fallback
-  for (const bridge of [0, Math.max(1, n * 0.008)]) {
+  // can also swallow real gaps — try unbridged first, then increasingly
+  // bridged (narrow bottle necks dip below threshold and split their card,
+  // e.g. 2-3px dips vs 7px+ real gaps)
+  for (const bridge of [0, Math.max(1, n * 0.008), n * 0.02]) {
     const merged: [number, number][] = [];
     for (const run of runs) {
       const previous = merged[merged.length - 1];
@@ -363,13 +534,29 @@ function bandsFromProfile(
       else merged.push([...run] as [number, number]);
     }
     let bands = merged.filter(([a, b]) => b - a >= n * 0.04);
+    if (process.env.CROP_DEBUG) {
+      console.log(
+        `[crop] profile n=${n} bridge=${bridge.toFixed(1)} runs=${runs.map(([a, b]) => `${a}-${b}`).join(",")} sized=${bands.map(([a, b]) => `${a}-${b}`).join(",")}`,
+      );
+    }
     if (bands.length === 0) continue;
 
     // headers/footers register as small bands — drop them instead of failing
     const sizeOf = ([a, b]: [number, number]) => b - a;
     const medianSize = median(bands.map(sizeOf));
     bands = bands.filter((band) => sizeOf(band) >= medianSize * 0.55);
+    if (process.env.CROP_DEBUG) {
+      console.log(
+        `[crop]   medianFiltered=${bands.map(([a, b]) => `${a}-${b}`).join(",")} regularity=${bands.length ? (Math.max(...bands.map(sizeOf)) / Math.min(...bands.map(sizeOf))).toFixed(2) : "-"}`,
+      );
+    }
     if (bands.length < 2 || bands.length > 12) continue;
+
+    if (
+      rejectHoles &&
+      bands.some((band, i) => i > 0 && band[0] - bands[i - 1][1] > medianSize * 0.6)
+    )
+      continue;
 
     // what remains must look like a regular grid
     const sizes = bands.map(sizeOf);

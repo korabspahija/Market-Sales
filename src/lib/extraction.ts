@@ -86,6 +86,7 @@ Rregullat:
 - Madhësia merret nga TEKSTI i rreshtit të produktit (p.sh. "240g", "1.5l", "30 copë"), jo nga fotoja: "750 ml" → sizeValue 750, sizeUnit ML; "1 kg" → 1 KG; "30 copë" → 30 COPE; nëse s'shkruhet, null.
 - Kategoritë: BULMET (qumësht, djathë, vezë, jogurt), MISH, PEME_PERIME (pemë e perime të freskëta), BUKE_BRUMERA, PIJE (ujë, lëngje, kafe, çaj), EMBELSIRA_SNACKS, HIGJIENE_PASTRIM (detergjentë, kozmetikë, letër), USHQIME_BAZE (miell, oriz, vaj, sheqer, konserva).
 - Datat e vlefshmërisë nëse shkruhen diku në faqe (p.sh. "Oferta vlen 02–08 korrik"), formati YYYY-MM-DD. Nëse viti nuk shkruhet, supozo vitin që e bën ofertën aktuale ose të ardhshme në raport me sotën — KURRË vit të kaluar.
+- RADHA E LISTIMIT është kritike: listo artikujt saktësisht sipas radhës së leximit — nga lart poshtë, dhe brenda çdo rreshti nga e majta në të djathtë. Mos e ndrysho radhën.
 - Nëse produktet janë të renditur në rrjetë të rregullt, raporto gridRows dhe gridCols të faqes, dhe për çdo produkt pozicionin gridRow (1 = rreshti më i lartë) e gridCol (1 = kolona më e majtë). Nëse s'ka rrjetë, vendos null.
 - Për çdo produkt jep box: kutinë e përafërt që mbulon kartën e tij (fotoja + emri + çmimi), me koordinata të normalizuara 0..1 relative ndaj GJITHË imazhit (x0 majtas, y0 lart, x1 djathtas, y1 poshtë).`;
 }
@@ -118,6 +119,80 @@ async function toImagePart(imageUrl: string): Promise<{ type: "image_url"; image
   const buffer = await readFile(filePath);
   const mime = imageUrl.endsWith(".png") ? "image/png" : imageUrl.endsWith(".webp") ? "image/webp" : "image/jpeg";
   return { type: "image_url", image_url: { url: `data:${mime};base64,${buffer.toString("base64")}`, detail: "high" } };
+}
+
+export type LayoutRow = { y0: number; y1: number; cards: number };
+
+const LAYOUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["rows"],
+  properties: {
+    rows: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["y0", "y1", "cards"],
+        properties: {
+          y0: { type: "number", description: "ku fillon rreshti vertikalisht (0 = maja e faqes, 1 = fundi)" },
+          y1: { type: "number", description: "ku mbaron rreshti vertikalisht (0..1)" },
+          cards: { type: "number", description: "sa karta produktesh ka ky rresht" },
+        },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Second, structure-only pass: every horizontal row of product cards with
+ * its own card count (mixed layouts like a 5-card fruit row above 4-card
+ * dairy rows are common). Counting cards in one band is a task vision
+ * models get right; exact pixel positions come from the pixels afterwards.
+ */
+export async function analyzePageLayout(imageUrl: string): Promise<LayoutRow[] | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o",
+      max_tokens: 1500,
+      messages: [
+        {
+          role: "system",
+          content: `Analizo STRUKTURËN e një faqeje fletushke marketi. Listo çdo RRESHT horizontal kartash produktesh nga lart poshtë. Për çdo rresht jep: y0 dhe y1 (ku fillon e mbaron rreshti vertikalisht në faqe, 0 = maja, 1 = fundi) dhe cards = sa karta produktesh ka AI RRESHT (numëroji me kujdes një nga një — rreshtat e ndryshëm shpesh kanë numër të ndryshëm kartash). Karta = kuti me produkt + çmim. Anashkalo header, tituj, banera e footer. Faqe pa karta produktesh = rows bosh.`,
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Analizo strukturën e kësaj faqeje." },
+            await toImagePart(imageUrl),
+          ],
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "page_layout", strict: true, schema: LAYOUT_SCHEMA },
+      },
+    }),
+  });
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) return null;
+  try {
+    const parsed = JSON.parse(content) as { rows: LayoutRow[] };
+    const rows = (parsed.rows ?? [])
+      .filter((r) => r.y0 >= 0 && r.y1 <= 1 && r.y1 - r.y0 >= 0.04 && r.cards >= 1 && r.cards <= 8)
+      .sort((a, b) => a.y0 - b.y0);
+    return rows.length > 0 ? rows : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function extractFlierPage(imageUrl: string): Promise<ExtractionResult> {

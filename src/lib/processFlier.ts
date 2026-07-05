@@ -1,12 +1,21 @@
 import sharp from "sharp";
 import { computeCropRects } from "./crop";
 import { prisma } from "./db";
-import { extractFlierPage, type ExtractionResult } from "./extraction";
+import {
+  analyzePageLayout,
+  extractFlierPage,
+  type ExtractionResult,
+  type LayoutRow,
+} from "./extraction";
 import { loadImageBuffer } from "./flierImages";
 import { saveImageBuffer } from "./storage";
 
 /** Crop every located item out of the page; failures degrade to null (category icon). */
-async function cropItems(imageUrl: string, result: ExtractionResult): Promise<(string | null)[]> {
+async function cropItems(
+  imageUrl: string,
+  result: ExtractionResult,
+  sections: LayoutRow[] | null,
+): Promise<(string | null)[]> {
   try {
     const buffer = await loadImageBuffer(imageUrl);
     const meta = await sharp(buffer).metadata();
@@ -18,6 +27,7 @@ async function cropItems(imageUrl: string, result: ExtractionResult): Promise<(s
       buffer,
       meta.width,
       meta.height,
+      sections,
     );
     return Promise.all(
       rects.map(async (rect) => {
@@ -68,10 +78,14 @@ export async function processNextPendingPage(flierId: string): Promise<ProcessRe
 
   const page = pending[0];
   try {
-    const result = await extractFlierPage(page.imageUrl);
+    // two passes in parallel: what's on the page, and how the page is laid out
+    const [result, sections] = await Promise.all([
+      extractFlierPage(page.imageUrl),
+      analyzePageLayout(page.imageUrl).catch(() => null),
+    ]);
 
     if (result.items.length > 0) {
-      const crops = await cropItems(page.imageUrl, result);
+      const crops = await cropItems(page.imageUrl, result, sections);
       await prisma.draftSale.createMany({
         data: result.items.map((item, i) => ({
           flierId: flier.id,
