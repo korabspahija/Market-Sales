@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
@@ -5,7 +6,9 @@ import { makePageThumbnail } from "@/lib/flierImages";
 import { FLIER_SOURCE_ADAPTERS, type FlierSource } from "@/lib/flierSources";
 import { pdfToImages } from "@/lib/pdf";
 import { autoPublishFlier, processNextPendingPage } from "@/lib/processFlier";
+import { PRODUCT_SOURCE_ADAPTERS } from "@/lib/productSources";
 import { saveImageBuffer } from "@/lib/storage";
+import { normalizeSearch } from "@/lib/text";
 
 // fetch + convert is fast; the remaining budget pre-processes pages
 export const maxDuration = 300;
@@ -83,6 +86,73 @@ export async function GET(request: Request) {
     }
   }
 
+  // chains that publish structured product pages import straight into live
+  // offers — one page-less Flier row per campaign for dedupe and validity
+  let directOffers = 0;
+  for (const adapter of PRODUCT_SOURCE_ADAPTERS) {
+    try {
+      const campaigns = await adapter.fetch();
+      let imported = 0;
+      for (const campaign of campaigns) {
+        const existing = await prisma.flier.findUnique({ where: { sourceKey: campaign.sourceKey } });
+        if (existing) continue;
+        const chain = await prisma.chain.findUnique({ where: { slug: campaign.chainSlug } });
+        if (!chain) continue;
+
+        const flier = await prisma.flier.create({
+          data: {
+            chainId: chain.id,
+            sourceKey: campaign.sourceKey,
+            status: "PUBLISHED",
+            startsAt: campaign.startsAt,
+            endsAt: campaign.endsAt,
+          },
+        });
+
+        const rows = [];
+        for (const product of campaign.products) {
+          let imageUrl: string | null = null;
+          if (product.imageUrl) {
+            try {
+              const res = await fetch(product.imageUrl, { signal: AbortSignal.timeout(15_000) });
+              if (res.ok) {
+                const jpeg = await sharp(Buffer.from(await res.arrayBuffer()))
+                  .flatten({ background: "#ffffff" })
+                  .resize({ width: 480, height: 480, fit: "inside", withoutEnlargement: true })
+                  .jpeg({ quality: 82 })
+                  .toBuffer();
+                imageUrl = await saveImageBuffer(jpeg, "image/jpeg");
+              }
+            } catch {
+              // photo is optional — the category icon covers it
+            }
+          }
+          rows.push({
+            chainId: chain.id,
+            flierId: flier.id,
+            productName: product.name,
+            searchName: normalizeSearch(product.name),
+            category: product.category,
+            sizeValue: product.sizeValue,
+            sizeUnit: product.sizeUnit,
+            oldPriceCents: product.oldPriceCents ?? product.newPriceCents,
+            newPriceCents: product.newPriceCents,
+            imageUrl: imageUrl ?? `/categories/${product.category}.svg`,
+            startsAt: campaign.startsAt,
+            endsAt: campaign.endsAt,
+          });
+        }
+        await prisma.sale.createMany({ data: rows });
+        imported++;
+        directOffers += rows.length;
+      }
+      summary[adapter.name] = imported > 0 ? `imported ${imported} campaigns` : "nothing new";
+    } catch (error) {
+      summary[adapter.name] = `failed: ${error instanceof Error ? error.message : "unknown"}`;
+    }
+  }
+  if (directOffers > 0) revalidateTag("sales", "max");
+
   // process and auto-publish every auto-fetched flier that isn't finished —
   // today's imports plus any leftovers a previous run couldn't fit in the
   // budget. Manual uploads (no sourceKey) keep the manager review queue.
@@ -112,6 +182,6 @@ export async function GET(request: Request) {
     summary,
     newFliers: newFlierIds.length,
     pagesProcessed: processed,
-    offersPublished: published,
+    offersPublished: published + directOffers,
   });
 }

@@ -185,7 +185,8 @@ const cachedChainPage = unstable_cache(
         orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
       prisma.flier.findFirst({
-        where: { chainId: chain.id, ...currentFlierWhere() },
+        // pages required: campaign imports are page-less and have no gallery
+        where: { chainId: chain.id, ...currentFlierWhere(), pages: { some: {} } },
         orderBy: { createdAt: "desc" },
         include: { pages: { orderBy: { pageNo: "asc" } } },
       }),

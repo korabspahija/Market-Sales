@@ -71,11 +71,24 @@ async function interex(): Promise<FlierSource | null> {
   return { chainSlug: "interex", sourceKey: `interex:${hash(newest.url)}`, pdfUrl: newest.url };
 }
 
+const SQ_MONTHS: Record<string, number> = {
+  janar: 1, shkurt: 2, mars: 3, prill: 4, maj: 5, qershor: 6,
+  korrik: 7, gusht: 8, shtator: 9, tetor: 10, nentor: 11, "nëntor": 11, dhjetor: 12,
+};
+
 /** Meridian links the current flier PDF from the homepage (wp upload path carries year/month). */
 async function meridian(): Promise<FlierSource | null> {
   const html = await fetchText("https://meridianexpress.com/");
   const pdfs = [...html.matchAll(/href="(https:\/\/meridianexpress\.com\/wp-content\/uploads\/(\d{4})\/(\d{2})\/[^"]*[Ff]letushka[^"]*\.pdf)"/g)]
-    .map((m) => ({ url: m[1], at: new Date(Number(m[2]), Number(m[3]), 0) }))
+    .map((m) => {
+      // "Fletushka-4-qershor-…" names the real publish day — the upload-month
+      // fallback alone made a stale flier look fresh until month's end
+      const named = /(\d{1,2})-(janar|shkurt|mars|prill|maj|qershor|korrik|gusht|shtator|tetor|n[eë]ntor|dhjetor)/i.exec(m[1]);
+      const at = named
+        ? new Date(Number(m[2]), SQ_MONTHS[named[2].toLowerCase()] - 1, Number(named[1]))
+        : new Date(Number(m[2]), Number(m[3]), 0);
+      return { url: m[1], at };
+    })
     .sort((a, b) => b.at.getTime() - a.at.getTime());
   const newest = pdfs[0];
   if (!newest || !isFresh(newest.at)) return null;
