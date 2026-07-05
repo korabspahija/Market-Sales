@@ -158,13 +158,22 @@ export async function GET(request: Request) {
   // budget. Manual uploads (no sourceKey) keep the manager review queue.
   const autoFliers = await prisma.flier.findMany({
     where: { sourceKey: { not: null }, status: { in: ["PROCESSING", "REVIEW"] } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, createdAt: true, _count: { select: { pages: true } } },
     orderBy: { createdAt: "asc" },
   });
 
   let processed = 0;
   let published = 0;
   for (const flier of autoFliers) {
+    // a page-less PROCESSING flier this young is a laptop-agent upload still
+    // in flight — closing it now would publish an empty flier mid-upload
+    if (
+      flier.status === "PROCESSING" &&
+      flier._count.pages === 0 &&
+      Date.now() - flier.createdAt.getTime() < 15 * 60_000
+    ) {
+      continue;
+    }
     let done = flier.status === "REVIEW";
     while (!done && Date.now() - started <= TIME_BUDGET_MS) {
       try {
