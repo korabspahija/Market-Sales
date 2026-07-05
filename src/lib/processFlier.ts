@@ -33,7 +33,9 @@ async function cropItems(
     );
     return Promise.all(
       rects.map(async (rect) => {
-        if (!rect) return null;
+        // low-res sources (social-media fliers) yield cells too small to be a
+        // usable photo — a clean category icon beats a blurry mis-cropped sliver
+        if (!rect || rect.width < 220 || rect.height < 220) return null;
         try {
           const crop = await sharp(buffer)
             .extract(rect)
@@ -87,7 +89,12 @@ export async function processNextPendingPage(flierId: string): Promise<ProcessRe
     ]);
 
     if (result.items.length > 0) {
-      const crops = await cropItems(page.imageUrl, result, sections);
+      // a page with exactly one product (promo-card posts) IS the product
+      // image — no cropping needed or wanted
+      const crops =
+        result.items.length === 1
+          ? [page.imageUrl]
+          : await cropItems(page.imageUrl, result, sections);
       await prisma.draftSale.createMany({
         data: result.items.map((item, i) => ({
           flierId: flier.id,

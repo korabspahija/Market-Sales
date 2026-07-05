@@ -22,6 +22,9 @@ const MIN_BYTES = 40_000;
 const MIN_WIDTH = 440;
 const MAX_PAGES_PER_POST = 10;
 const MAX_POSTS = 2;
+// theater visits per handle per run — more looks like scraping and earns
+// rate-limited 206px login stubs instead of full-res photos
+const MAX_PHOTO_VISITS = 12;
 
 function log(message: string) {
   console.log(`[${new Date().toISOString()}] ${message}`);
@@ -61,27 +64,55 @@ async function dismissDialogs(page: import("playwright-core").Page) {
   await page.keyboard.press("Escape").catch(() => {});
 }
 
-/** Groups sharing any URL are the same post seen across scroll snapshots. */
-function mergeGroups(into: string[][], snapshot: string[][]) {
+type FeedImage = { src: string; href: string | null };
+
+/** Groups sharing any thumbnail URL are the same post across scroll snapshots. */
+function mergeGroups(into: FeedImage[][], snapshot: FeedImage[][]) {
   for (const group of snapshot) {
-    const hit = into.find((existing) => group.some((url) => existing.includes(url)));
+    const hit = into.find((existing) => group.some((img) => existing.some((e) => e.src === img.src)));
     if (hit) {
-      for (const url of group) if (!hit.includes(url)) hit.push(url);
+      for (const img of group) if (!hit.some((e) => e.src === img.src)) hit.push(img);
     } else {
       into.push([...group]);
     }
   }
 }
 
+/**
+ * The feed serves ~590px previews; the photo page behind each preview (the
+ * /photos theater — publicly viewable logged out) carries the original at
+ * 1080-2048px. That resolution difference is what makes crops and extraction
+ * usable, so it's worth one extra page visit per image.
+ */
+async function fullResolution(
+  context: import("playwright-core").BrowserContext,
+  image: FeedImage,
+): Promise<string> {
+  if (!image.href) return image.src;
+  const page = await context.newPage();
+  try {
+    await page.goto(image.href, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForTimeout(2_200);
+    await page.keyboard.press("Escape").catch(() => {});
+    const url = (await page.evaluate(`(() => {
+      const imgs = [...document.querySelectorAll("img")]
+        .filter((img) => img.src.includes("scontent") && !img.src.includes("emoji"));
+      imgs.sort((a, b) => (b.naturalWidth || 0) - (a.naturalWidth || 0));
+      return imgs[0] ? imgs[0].src : null;
+    })()`)) as string | null;
+    return url ?? image.src;
+  } catch {
+    return image.src;
+  } finally {
+    await page.close();
+  }
+}
+
 /** Newest big-image posts from one public page, grouped per post. */
 async function collectFromPage(
-  browser: import("playwright-core").Browser,
+  context: import("playwright-core").BrowserContext,
   handle: string,
-): Promise<string[][]> {
-  const context = await browser.newContext({
-    locale: "sq-AL",
-    viewport: { width: 1280, height: 900 },
-  });
+): Promise<FeedImage[][]> {
   const page = await context.newPage();
   try {
     await page.goto(`https://www.facebook.com/${handle}`, { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -105,34 +136,94 @@ async function collectFromPage(
         }
         return url;
       };
+      const photoLink = (img) => {
+        const anchor = img.closest("a");
+        const href = anchor ? anchor.href : null;
+        return href && href.includes("photo") ? href : null;
+      };
       const collect = (root) => [...root.querySelectorAll("img")]
         .filter((img) => img.src.includes("scontent") && !img.src.includes("emoji"))
-        .map(best);
+        .map((img) => ({ src: best(img), href: photoLink(img) }));
 
       const articles = [...document.querySelectorAll('[role="article"]')];
       const result = [];
       for (const article of articles) {
-        const urls = collect(article);
-        if (urls.length > 0) result.push([...new Set(urls)]);
+        const imgs = collect(article);
+        if (imgs.length > 0) result.push(imgs);
       }
       if (result.length === 0) {
         const all = collect(document);
-        if (all.length > 0) result.push([...new Set(all)]);
+        if (all.length > 0) result.push(all);
       }
       return result;
     })()`;
 
-    const groups: string[][] = [];
+    const groups: FeedImage[][] = [];
     for (let i = 0; i < 6; i++) {
-      mergeGroups(groups, (await page.evaluate(SNAPSHOT)) as string[][]);
+      mergeGroups(groups, (await page.evaluate(SNAPSHOT)) as FeedImage[][]);
       await page.mouse.wheel(0, 1200);
       await page.waitForTimeout(1_700);
     }
-    mergeGroups(groups, (await page.evaluate(SNAPSHOT)) as string[][]);
+    mergeGroups(groups, (await page.evaluate(SNAPSHOT)) as FeedImage[][]);
     log(`facebook/${handle}: ${groups.length} post group(s), ${groups.reduce((n, g) => n + g.length, 0)} images pre-filter`);
     return groups;
   } finally {
-    await context.close();
+    await page.close();
+  }
+}
+
+/**
+ * Fallback when the feed serves the thin login-walled render: the /photos
+ * tab stays public. It loses post grouping, so photos are grouped by fbid
+ * proximity — one upload batch (an album) gets near-adjacent ids (~millions
+ * apart), unrelated posts differ by hundreds of millions.
+ */
+async function collectFromPhotosTab(
+  context: import("playwright-core").BrowserContext,
+  handle: string,
+): Promise<FeedImage[][]> {
+  const page = await context.newPage();
+  try {
+    await page.goto(`https://www.facebook.com/${handle}/photos`, {
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+    });
+    await page.waitForTimeout(3_000);
+    await page.keyboard.press("Escape").catch(() => {});
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.wheel(0, 1200);
+      await page.waitForTimeout(1_400);
+    }
+    const photos = (await page.evaluate(`(() => {
+      const seen = new Set();
+      const out = [];
+      for (const anchor of document.querySelectorAll('a[href*="photo"]')) {
+        const match = anchor.href.match(/fbid=(\\d+)/);
+        const img = anchor.querySelector("img");
+        if (!match || !img || !img.src.includes("scontent") || seen.has(match[1])) continue;
+        seen.add(match[1]);
+        out.push({ src: img.src, href: anchor.href, fbid: match[1] });
+      }
+      return out.slice(0, 14);
+    })()`)) as Array<{ src: string; href: string; fbid: string }>;
+
+    const groups: FeedImage[][] = [];
+    let previous: number | null = null;
+    for (const photo of photos) {
+      // fbids stay under 2^53 — plain number math is exact enough here
+      const fbid = Number(photo.fbid);
+      const sameBatch = previous !== null && Math.abs(fbid - previous) < 100_000_000;
+      if (sameBatch && groups.length > 0) groups[groups.length - 1].push({ src: photo.src, href: photo.href });
+      else groups.push([{ src: photo.src, href: photo.href }]);
+      previous = fbid;
+    }
+    log(`facebook/${handle}: photos tab gave ${photos.length} photos in ${groups.length} group(s)`);
+    return groups;
+  } catch (error) {
+    log(`facebook/${handle}: photos tab failed — ${error instanceof Error ? error.message : error}`);
+    return [];
+  } finally {
+    await page.close();
   }
 }
 
@@ -147,14 +238,18 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
   }
 
   const fliers: FacebookFlier[] = [];
+  const context = await browser.newContext({
+    locale: "sq-AL",
+    viewport: { width: 1280, height: 900 },
+  });
   try {
     for (const { chainSlug, handle } of FB_PAGES) {
       try {
-        let groups = await collectFromPage(browser, handle);
-        // renders vary run to run — one more try before giving up
+        let groups = await collectFromPage(context, handle);
+        // thin login-walled feed render — the /photos tab stays public
         if (groups.reduce((n, g) => n + g.length, 0) < 2) {
-          log(`facebook/${handle}: thin render, retrying once`);
-          groups = await collectFromPage(browser, handle);
+          log(`facebook/${handle}: thin feed render, trying the photos tab`);
+          groups = await collectFromPhotosTab(context, handle);
         }
         if (groups.length === 0) {
           log(`facebook/${handle}: no post images visible (login wall?)`);
@@ -162,11 +257,14 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
         }
 
         let postsTaken = 0;
-        for (const urls of groups) {
-          if (postsTaken >= MAX_POSTS) break;
+        let visits = 0;
+        for (const images of groups) {
+          if (postsTaken >= MAX_POSTS || visits >= MAX_PHOTO_VISITS) break;
           const pages: Buffer[] = [];
-          for (const url of urls.slice(0, MAX_PAGES_PER_POST)) {
+          for (const image of images.slice(0, MAX_PAGES_PER_POST)) {
             try {
+              if (image.href) visits++;
+              const url = await fullResolution(context, image);
               const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
               if (!res.ok) continue;
               const buffer = Buffer.from(await res.arrayBuffer());
@@ -175,6 +273,7 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
                 log(`  skipped image ${buffer.length}B ${meta.width ?? "?"}px`);
                 continue;
               }
+              log(`  page ${meta.width}x${meta.height ?? "?"} (${Math.round(buffer.length / 1024)}KB)`);
               pages.push(buffer);
             } catch {
               // skip unreadable image
@@ -195,6 +294,7 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
       }
     }
   } finally {
+    await context.close();
     await browser.close();
   }
   return fliers;
