@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { FlierPagesGallery } from "@/components/FlierPagesGallery";
 import { SaleCard } from "@/components/SaleCard";
 import { trackEvent } from "@/lib/analytics";
-import { formatDateFull } from "@/lib/format";
+import { formatDate, formatDateFull } from "@/lib/format";
 import { getPublicFlierCached } from "@/lib/sales";
 import { absoluteUrl } from "@/lib/site";
 
@@ -64,21 +64,22 @@ export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]"
           alt=""
           className="h-12 w-12 rounded-2xl border border-line bg-white object-contain p-1 shadow-sm"
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-52">
           <h1 className="text-xl font-extrabold leading-tight tracking-tight md:text-2xl">
             Fletushka e {flier.chain.name}
           </h1>
           <p className="text-sm text-ink-soft">
             {flier.startsAt && flier.endsAt
-              ? `Vlen prej ${formatDateFull(flier.startsAt)} deri më ${formatDateFull(flier.endsAt)}`
+              ? `Vlen prej ${formatDate(flier.startsAt)} deri më ${formatDateFull(flier.endsAt)}`
               : `Publikuar më ${formatDateFull(flier.createdAt)}`}
             {" · "}
             {sales.length === 1 ? "1 ofertë aktive" : `${sales.length} oferta aktive`}
           </p>
         </div>
+        {/* full-width row on phones, inline chip on wider screens */}
         <Link
           href={`/marketi/${flier.chain.slug}`}
-          className="shrink-0 rounded-xl border border-line bg-white px-3.5 py-2 text-xs font-bold transition hover:border-ink/40 hover:bg-paper"
+          className="w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-center text-xs font-bold transition hover:border-ink/40 hover:bg-paper sm:w-auto sm:shrink-0"
         >
           Të gjitha ofertat e {flier.chain.name} →
         </Link>
