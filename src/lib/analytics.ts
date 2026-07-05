@@ -7,7 +7,14 @@ import { prisma } from "./db";
  * /privatesia). Server-side events run via after(), so they add zero
  * latency and never break a page.
  */
-export type EventType = "search" | "filter_use" | "offer_view" | "flier_view" | "chain_page" | "share";
+export type EventType =
+  | "search"
+  | "filter_use"
+  | "offer_view"
+  | "flier_view"
+  | "flier_list"
+  | "chain_page"
+  | "share";
 
 export function trackEvent(type: EventType, data: Record<string, string | number | boolean>): void {
   after(async () => {

@@ -6,7 +6,8 @@ import { Category } from "@/generated/prisma/enums";
 import type { Metadata } from "next";
 import { trackEvent } from "@/lib/analytics";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories";
-import { getActiveSalesCached, getChainsCached, type SaleSort } from "@/lib/sales";
+import { getActiveSalesCached, getChainsCached, getPublicFliersCached, type SaleSort } from "@/lib/sales";
+import { validityLabel } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 
 // filtered/search variants collapse to the homepage for search engines
@@ -58,12 +59,14 @@ export default async function HomePage(props: PageProps<"/">) {
     rendit: sort === "zbritja" ? undefined : sort,
   };
 
-  const [chains, sales] = await Promise.all([
+  const hasFilters = Boolean(q || chainSlug || category);
+
+  const [chains, sales, fliers] = await Promise.all([
     getChainsCached(),
     getActiveSalesCached({ q: q || undefined, chainSlug: chainSlug || undefined, category, sort }),
+    // the flier strip only shows on the unfiltered home view
+    hasFilters ? Promise.resolve([]) : getPublicFliersCached(),
   ]);
-
-  const hasFilters = Boolean(q || chainSlug || category);
 
   if (q) trackEvent("search", { q: q.toLowerCase().slice(0, 60), results: sales.length });
   else if (chainSlug || category || sort !== "zbritja") {
@@ -140,6 +143,52 @@ export default async function HomePage(props: PageProps<"/">) {
           );
         })}
       </div>
+
+      {/* flier strip — the "flip through the leaflet" entry point */}
+      {fliers.length > 0 && (
+        <section className="rounded-3xl border border-line bg-white p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-extrabold uppercase tracking-wide text-ink-soft">
+              Fletushkat e javës
+            </h2>
+            <Link href="/fletushkat" className="text-sm font-bold text-deal transition hover:text-deal-dark">
+              Të gjitha →
+            </Link>
+          </div>
+          <div className="chip-row -mx-4 flex gap-3 overflow-x-auto px-4 pb-1">
+            {fliers.slice(0, 8).map((flier) => (
+              <Link key={flier.id} href={`/fletushka/${flier.id}`} className="group w-28 shrink-0">
+                <div className="relative h-36 overflow-hidden rounded-2xl border border-line bg-paper shadow-sm transition group-hover:border-ink/25">
+                  {flier.cover ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={flier.cover}
+                      alt={`Fletushka e ${flier.chain.name}`}
+                      className="h-full w-full object-cover object-top"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-3xl">📰</div>
+                  )}
+                  {flier.endsAt && (
+                    <span className="absolute bottom-1.5 left-1.5 rounded-full bg-ink/85 px-2 py-0.5 text-[10px] font-bold text-white">
+                      {validityLabel(flier.endsAt)}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={flier.chain.logoUrl}
+                    alt=""
+                    className="h-5 w-5 shrink-0 rounded-md border border-line bg-white object-contain p-px"
+                  />
+                  <p className="truncate text-xs font-bold">{flier.chain.name}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-ink-soft">

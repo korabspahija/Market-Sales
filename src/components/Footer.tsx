@@ -28,6 +28,9 @@ export async function Footer() {
             <Link href="/rreth-nesh" className="font-semibold text-ink-soft transition hover:text-ink">
               Rreth nesh
             </Link>
+            <Link href="/fletushkat" className="font-semibold text-ink-soft transition hover:text-ink">
+              Fletushkat
+            </Link>
             <Link href="/dyqanet" className="font-semibold text-ink-soft transition hover:text-ink">
               Dyqanet
             </Link>

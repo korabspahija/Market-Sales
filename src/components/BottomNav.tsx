@@ -12,6 +12,13 @@ const ITEMS = [
     ),
   },
   {
+    href: "/fletushkat",
+    label: "Fletushkat",
+    icon: (
+      <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2 M18 14h-8 M15 18h-5 M10 6h8v4h-8V6Z" />
+    ),
+  },
+  {
     href: "/dyqanet",
     label: "Dyqanet",
     icon: (
@@ -36,7 +43,11 @@ export function BottomNav({ isManager }: { isManager: boolean }) {
       <div className="mx-auto flex max-w-md items-stretch">
         {items.map((item) => {
           const active =
-            item.href === "/" ? pathname === "/" || pathname.startsWith("/oferta") : pathname.startsWith(item.href);
+            item.href === "/"
+              ? pathname === "/" || pathname.startsWith("/oferta")
+              : item.href === "/fletushkat"
+                ? pathname.startsWith("/fletushka") // covers the /fletushka/[id] detail too
+                : pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}

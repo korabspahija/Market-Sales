@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
-import { activeSaleWhere } from "@/lib/sales";
+import { activeSaleWhere, currentFlierWhere } from "@/lib/sales";
 import { SITE_URL } from "@/lib/site";
 
 // re-generate hourly — offers come and go weekly
@@ -13,7 +13,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       select: { id: true, updatedAt: true },
     }),
     prisma.flier.findMany({
-      where: { sales: { some: activeSaleWhere() } },
+      where: currentFlierWhere(),
       select: { id: true, createdAt: true },
     }),
     prisma.chain.findMany({ select: { slug: true } }),
@@ -26,6 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily" as const,
       priority: 0.9,
     })),
+    { url: `${SITE_URL}/fletushkat`, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/dyqanet`, changeFrequency: "weekly", priority: 0.7 },
     { url: `${SITE_URL}/rreth-nesh`, changeFrequency: "monthly", priority: 0.3 },
     { url: `${SITE_URL}/privatesia`, changeFrequency: "yearly", priority: 0.1 },

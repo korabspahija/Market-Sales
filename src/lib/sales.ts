@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import type { Chain, Sale } from "@/generated/prisma/client";
-import type { Category } from "@/generated/prisma/enums";
+import type { Category, FlierStatus } from "@/generated/prisma/enums";
 import { prisma } from "./db";
 import { discountPercent } from "./format";
 import { normalizeSearch } from "./text";
@@ -19,6 +19,22 @@ export type SaleFilters = {
 /** Sales currently visible to shoppers: startsAt <= now < endsAt. */
 export function activeSaleWhere(now = new Date()) {
   return { startsAt: { lte: now }, endsAt: { gt: now } };
+}
+
+/**
+ * Fliers worth showing publicly: imported or reviewed (the flier image is the
+ * chain's own public material, so it doesn't wait for the product review),
+ * and still valid — or too fresh for the validity to be known yet.
+ */
+export function currentFlierWhere(now = new Date()) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const freshLimit = new Date(today);
+  freshLimit.setDate(freshLimit.getDate() - 14);
+  return {
+    status: { in: ["REVIEW", "PUBLISHED"] satisfies FlierStatus[] },
+    OR: [{ endsAt: { gte: today } }, { endsAt: null, createdAt: { gte: freshLimit } }],
+  };
 }
 
 export async function getActiveSales(filters: SaleFilters = {}): Promise<SaleWithChain[]> {
@@ -169,7 +185,7 @@ const cachedChainPage = unstable_cache(
         orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
       prisma.flier.findFirst({
-        where: { chainId: chain.id, sales: { some: activeSaleWhere() } },
+        where: { chainId: chain.id, ...currentFlierWhere() },
         orderBy: { createdAt: "desc" },
         include: { pages: { orderBy: { pageNo: "asc" } } },
       }),
@@ -235,6 +251,55 @@ export async function getPublicFlierCached(id: string) {
     },
     sales: data.sales.map(reviveSale),
   };
+}
+
+const cachedPublicFliers = unstable_cache(
+  async () => {
+    const fliers = await prisma.flier.findMany({
+      where: { ...currentFlierWhere(), pages: { some: {} } },
+      include: {
+        chain: true,
+        pages: { orderBy: { pageNo: "asc" }, take: 1 },
+        _count: { select: { pages: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const saleCounts = await prisma.sale.groupBy({
+      by: ["flierId"],
+      where: { flierId: { in: fliers.map((f) => f.id) }, ...activeSaleWhere() },
+      _count: { _all: true },
+    });
+    return { fliers, saleCounts };
+  },
+  ["public-fliers"],
+  { revalidate: 60, tags: ["sales"] },
+);
+
+export type PublicFlierCard = {
+  id: string;
+  chain: Chain;
+  cover: string | null;
+  pageCount: number;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  createdAt: Date;
+  activeSales: number;
+};
+
+/** The /fletushkat index + home strip: every current flier as a card. */
+export async function getPublicFliersCached(): Promise<PublicFlierCard[]> {
+  const { fliers, saleCounts } = await cachedPublicFliers();
+  const counts = new Map(saleCounts.map((c) => [c.flierId, c._count._all]));
+  return fliers.map((f) => ({
+    id: f.id,
+    chain: f.chain,
+    cover: f.pages[0]?.thumbUrl ?? f.pages[0]?.imageUrl ?? null,
+    pageCount: f._count.pages,
+    startsAt: f.startsAt ? new Date(f.startsAt) : null,
+    endsAt: f.endsAt ? new Date(f.endsAt) : null,
+    createdAt: new Date(f.createdAt),
+    activeSales: counts.get(f.id) ?? 0,
+  }));
 }
 
 export type SaleStatus = "aktive" | "skaduar" | "se-shpejti";

@@ -6,14 +6,37 @@ import { SaleCard } from "@/components/SaleCard";
 import { trackEvent } from "@/lib/analytics";
 import { formatDateFull } from "@/lib/format";
 import { getPublicFlierCached } from "@/lib/sales";
+import { absoluteUrl } from "@/lib/site";
 
 export async function generateMetadata(props: PageProps<"/fletushka/[id]">): Promise<Metadata> {
   const { id } = await props.params;
   const data = await getPublicFlierCached(id);
+  if (!data) return { title: "Fletushka", alternates: { canonical: `/fletushka/${id}` } };
+
+  const title = `Fletushka e ${data.flier.chain.name}`;
+  const description = `Shfleto fletushkën aktuale të ${data.flier.chain.name} me ${data.flier.pages.length} faqe${
+    data.flier.endsAt ? ` — vlen deri më ${formatDateFull(data.flier.endsAt)}` : ""
+  }.`;
+  const cover = data.flier.pages[0]?.thumbUrl ?? data.flier.pages[0]?.imageUrl;
   return {
-    title: data ? `Fletushka e ${data.flier.chain.name}` : "Fletushka",
+    title,
+    description,
     alternates: { canonical: `/fletushka/${id}` },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      ...(cover ? { images: [absoluteUrl(cover)] } : {}),
+    },
   };
+}
+
+/** Valid through the whole last day of the flier (or unknown = assume valid). */
+function flierStillValid(endsAt: Date | null): boolean {
+  if (!endsAt) return true;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return endsAt >= today;
 }
 
 export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]">) {
@@ -28,10 +51,10 @@ export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]"
   return (
     <div className="space-y-5">
       <Link
-        href="/"
+        href="/fletushkat"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-soft transition hover:text-ink"
       >
-        ← Kthehu te ofertat
+        ← Të gjitha fletushkat
       </Link>
 
       <section className="flex flex-wrap items-center gap-3">
@@ -74,8 +97,16 @@ export default async function PublicFlierPage(props: PageProps<"/fletushka/[id]"
       {sales.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-line bg-white px-6 py-14 text-center">
           <p className="text-4xl">🏷️</p>
-          <h2 className="mt-3 text-lg font-extrabold">S’ka oferta aktive nga kjo fletushkë</h2>
-          <p className="mt-1 text-sm text-ink-soft">Ndoshta kanë skaduar — shiko ofertat aktuale.</p>
+          <h2 className="mt-3 text-lg font-extrabold">
+            {flierStillValid(flier.endsAt)
+              ? "Produktet nga kjo fletushkë s’janë futur ende"
+              : "S’ka oferta aktive nga kjo fletushkë"}
+          </h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {flierStillValid(flier.endsAt)
+              ? "Shfleto faqet origjinale më lart — çmimet janë aty."
+              : "Ndoshta kanë skaduar — shiko ofertat aktuale."}
+          </p>
           <Link
             href="/"
             className="mt-5 inline-block rounded-xl bg-deal px-5 py-2.5 text-sm font-bold text-white transition hover:bg-deal-dark"

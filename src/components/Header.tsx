@@ -20,6 +20,12 @@ export function Header({ isManager }: { isManager: boolean }) {
             Ofertat
           </Link>
           <Link
+            href="/fletushkat"
+            className="hidden rounded-full px-4 py-2 text-sm font-semibold text-ink-soft transition hover:bg-paper hover:text-ink md:block"
+          >
+            Fletushkat
+          </Link>
+          <Link
             href="/dyqanet"
             className="hidden rounded-full px-4 py-2 text-sm font-semibold text-ink-soft transition hover:bg-paper hover:text-ink md:block"
           >
