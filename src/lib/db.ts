@@ -27,14 +27,26 @@ function createClient() {
   });
 
   // retry exactly once on a transient connection error — the pool discards
-  // the dead socket and the retry runs on a fresh connection
+  // the dead socket and the retry runs on a fresh connection. READS ONLY:
+  // a write may have committed before the socket died, so retrying it can
+  // duplicate rows (e.g. a 145-row createMany published twice)
+  const RETRYABLE = new Set([
+    "findUnique",
+    "findUniqueOrThrow",
+    "findFirst",
+    "findFirstOrThrow",
+    "findMany",
+    "count",
+    "aggregate",
+    "groupBy",
+  ]);
   return base.$extends({
     query: {
-      $allOperations: async ({ args, query }) => {
+      $allOperations: async ({ operation, args, query }) => {
         try {
           return await query(args);
         } catch (error) {
-          if (!isTransientConnectionError(error)) throw error;
+          if (!isTransientConnectionError(error) || !RETRYABLE.has(operation)) throw error;
           return query(args);
         }
       },

@@ -176,6 +176,15 @@ export async function autoPublishFlier(flierId: string): Promise<number> {
     return 0;
   }
 
+  // compare-and-swap claim: whatever invokes this twice (overlapping cron
+  // runs, platform retries, the connection-retry wrapper), only the run that
+  // flips REVIEW -> PUBLISHED gets to insert the offers
+  const claimed = await prisma.flier.updateMany({
+    where: { id: flierId, status: "REVIEW" },
+    data: { status: "PUBLISHED" },
+  });
+  if (claimed.count === 0) return 0;
+
   const pagesByNo = new Map(flier.pages.map((p) => [p.pageNo, p]));
   await prisma.sale.createMany({
     data: flier.drafts.map((draft) => {
@@ -207,7 +216,6 @@ export async function autoPublishFlier(flierId: string): Promise<number> {
   });
 
   await prisma.draftSale.deleteMany({ where: { flierId } });
-  await prisma.flier.update({ where: { id: flierId }, data: { status: "PUBLISHED" } });
   revalidateTag("sales", "max");
   return flier.drafts.length;
 }
