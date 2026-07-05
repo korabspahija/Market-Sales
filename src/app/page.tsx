@@ -66,12 +66,18 @@ export default async function HomePage(props: PageProps<"/">) {
 
   const hasFilters = Boolean(q || chainSlug || category);
 
-  const [chains, sales, fliers] = await Promise.all([
+  const [chains, sales, fliers, allActive] = await Promise.all([
     getChainsCached(),
     getActiveSalesCached({ q: q || undefined, chainSlug: chainSlug || undefined, category, sort }),
     // the flier strip only shows on the unfiltered home view
     hasFilters ? Promise.resolve([]) : getPublicFliersCached(),
+    // unfiltered actives (same 60s cache) — chains without offers get no chip
+    getActiveSalesCached({}),
   ]);
+
+  const activeChainIds = new Set(allActive.map((sale) => sale.chainId));
+  // keep the selected chain visible even at zero, so it can be unselected
+  const visibleChains = chains.filter((chain) => activeChainIds.has(chain.id) || chain.slug === chainSlug);
 
   if (q) trackEvent("search", { q: q.toLowerCase().slice(0, 60), results: sales.length });
   else if (chainSlug || category || sort !== "zbritja") {
@@ -112,7 +118,7 @@ export default async function HomePage(props: PageProps<"/">) {
         >
           Të gjitha
         </Link>
-        {chains.map((chain) => {
+        {visibleChains.map((chain) => {
           const active = chainSlug === chain.slug;
           return (
             <Link
