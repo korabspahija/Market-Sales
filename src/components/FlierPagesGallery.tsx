@@ -5,19 +5,19 @@ import { ImageLightbox } from "./ImageLightbox";
 
 type Page = { id: string; pageNo: number; imageUrl: string; thumbUrl?: string | null; failed?: boolean };
 
-/** Horizontal strip of flier pages; tapping opens a full-screen lightbox (mobile-first). */
+/** Horizontal strip of flier pages; tapping opens a swipeable full-screen lightbox. */
 export function FlierPagesGallery({ pages, size = "lg" }: { pages: Page[]; size?: "sm" | "lg" }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
   const dimensions = size === "lg" ? "h-36 w-27" : "h-28 w-20";
 
   return (
     <>
       <div className="chip-row -mx-4 flex gap-2 overflow-x-auto px-4">
-        {pages.map((page) => (
+        {pages.map((page, index) => (
           <button
             key={page.id}
             type="button"
-            onClick={() => setOpen(page.imageUrl)}
+            onClick={() => setOpen(index)}
             title={`Faqja ${page.pageNo}`}
             className="shrink-0"
           >
@@ -33,7 +33,14 @@ export function FlierPagesGallery({ pages, size = "lg" }: { pages: Page[]; size?
           </button>
         ))}
       </div>
-      {open && <ImageLightbox src={open} onClose={() => setOpen(null)} />}
+      {open !== null && (
+        <ImageLightbox
+          src={pages[open].imageUrl}
+          images={pages.map((page) => page.imageUrl)}
+          initialIndex={open}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </>
   );
 }

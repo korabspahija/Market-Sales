@@ -149,7 +149,7 @@ export default async function HomePage(props: PageProps<"/">) {
         <section className="rounded-3xl border border-line bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-extrabold uppercase tracking-wide text-ink-soft">
-              Fletushkat e javës
+              Fletushkat e fundit
             </h2>
             <Link href="/fletushkat" className="text-sm font-bold text-deal transition hover:text-deal-dark">
               Të gjitha →

@@ -1,6 +1,8 @@
+import { revalidateTag } from "next/cache";
 import sharp from "sharp";
 import { computeCropRects } from "./crop";
 import { prisma } from "./db";
+import { normalizeSearch } from "./text";
 import {
   analyzePageLayout,
   extractFlierPage,
@@ -92,8 +94,9 @@ export async function processNextPendingPage(flierId: string): Promise<ProcessRe
           pageNo: page.pageNo,
           productName: item.productName,
           category: item.category,
-          sizeValue: item.sizeValue,
-          sizeUnit: item.sizeUnit,
+          // unreadable size on the flier -> sold by the piece
+          sizeValue: item.sizeValue ?? 1,
+          sizeUnit: item.sizeUnit ?? "COPE",
           oldPriceCents: item.oldPriceEur ? Math.round(item.oldPriceEur * 100) : null,
           newPriceCents: Math.round(item.newPriceEur * 100),
           discountPercent: item.discountPercent,
@@ -102,10 +105,26 @@ export async function processNextPendingPage(flierId: string): Promise<ProcessRe
       });
     }
 
-    // flier-level validity: first page that mentions dates wins
+    // flier-level validity: banner pages carry broad campaign ranges ("valide
+    // deri në shtator"), so the page with the NARROWEST complete range wins —
+    // that's the actual weekly validity
     const validityUpdate: { startsAt?: Date; endsAt?: Date } = {};
-    if (!flier.startsAt && result.validFrom) validityUpdate.startsAt = new Date(result.validFrom);
-    if (!flier.endsAt && result.validTo) validityUpdate.endsAt = new Date(result.validTo);
+    const from = result.validFrom ? new Date(result.validFrom) : null;
+    const to = result.validTo ? new Date(result.validTo) : null;
+    if (from && to) {
+      const span = to.getTime() - from.getTime();
+      const currentSpan =
+        flier.startsAt && flier.endsAt
+          ? flier.endsAt.getTime() - flier.startsAt.getTime()
+          : Infinity;
+      if (span > 0 && span < currentSpan) {
+        validityUpdate.startsAt = from;
+        validityUpdate.endsAt = to;
+      }
+    } else {
+      if (!flier.startsAt && from) validityUpdate.startsAt = from;
+      if (!flier.endsAt && to) validityUpdate.endsAt = to;
+    }
 
     await prisma.flierPage.update({ where: { id: page.id }, data: { status: "DONE" } });
     if (Object.keys(validityUpdate).length > 0) {
@@ -132,4 +151,63 @@ export class PageProcessError extends Error {
   ) {
     super(message);
   }
+}
+
+/**
+ * Publishes every draft of a fully-processed flier as live offers — the
+ * no-review path for auto-fetched fliers (manual uploads keep the review
+ * queue). Already-expired fliers discard their drafts instead of publishing.
+ * Returns the number of offers published.
+ */
+export async function autoPublishFlier(flierId: string): Promise<number> {
+  const flier = await prisma.flier.findUnique({
+    where: { id: flierId },
+    include: { drafts: true, pages: true },
+  });
+  if (!flier || flier.status !== "REVIEW") return 0;
+
+  const now = new Date();
+  const startsAt = flier.startsAt ?? now;
+  const endsAt = flier.endsAt ?? new Date(now.getTime() + 7 * 86_400_000);
+
+  if (flier.drafts.length === 0 || endsAt <= now) {
+    await prisma.draftSale.deleteMany({ where: { flierId } });
+    await prisma.flier.update({ where: { id: flierId }, data: { status: "PUBLISHED" } });
+    return 0;
+  }
+
+  const pagesByNo = new Map(flier.pages.map((p) => [p.pageNo, p]));
+  await prisma.sale.createMany({
+    data: flier.drafts.map((draft) => {
+      const category = draft.category ?? "USHQIME_BAZE";
+      // no readable struck-through price: derive it from the printed discount
+      // badge, or fall back to "no discount shown"
+      const oldPriceCents =
+        draft.oldPriceCents ??
+        (draft.discountPercent && draft.discountPercent > 0 && draft.discountPercent < 95
+          ? Math.round(draft.newPriceCents / (1 - draft.discountPercent / 100))
+          : draft.newPriceCents);
+      return {
+        chainId: flier.chainId,
+        flierId: flier.id,
+        flierPageUrl: pagesByNo.get(draft.pageNo)?.imageUrl ?? null,
+        flierPageThumbUrl: pagesByNo.get(draft.pageNo)?.thumbUrl ?? null,
+        productName: draft.productName,
+        searchName: normalizeSearch(draft.productName),
+        category,
+        sizeValue: draft.sizeValue ?? 1,
+        sizeUnit: draft.sizeUnit ?? "COPE",
+        oldPriceCents,
+        newPriceCents: draft.newPriceCents,
+        imageUrl: draft.imageUrl ?? `/categories/${category}.svg`,
+        startsAt,
+        endsAt,
+      };
+    }),
+  });
+
+  await prisma.draftSale.deleteMany({ where: { flierId } });
+  await prisma.flier.update({ where: { id: flierId }, data: { status: "PUBLISHED" } });
+  revalidateTag("sales", "max");
+  return flier.drafts.length;
 }

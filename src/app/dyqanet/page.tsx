@@ -103,7 +103,7 @@ export default async function StoresPage(props: PageProps<"/dyqanet">) {
                         </Link>
                         <p className="mt-0.5 text-xs text-ink-soft">
                           {locations.length === 1 ? "1 lokacion" : `${locations.length} lokacione`} ·{" "}
-                          <span className="font-bold text-deal-dark">
+                          <span className={`font-bold ${offers > 0 ? "text-emerald-600" : "text-deal-dark"}`}>
                             {offers === 1 ? "1 ofertë aktive" : `${offers} oferta aktive`}
                           </span>
                         </p>

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { makePageThumbnail } from "@/lib/flierImages";
 import { FLIER_SOURCE_ADAPTERS, type FlierSource } from "@/lib/flierSources";
 import { pdfToImages } from "@/lib/pdf";
-import { processNextPendingPage } from "@/lib/processFlier";
+import { autoPublishFlier, processNextPendingPage } from "@/lib/processFlier";
 import { saveImageBuffer } from "@/lib/storage";
 
 // fetch + convert is fast; the remaining budget pre-processes pages
@@ -83,21 +83,35 @@ export async function GET(request: Request) {
     }
   }
 
-  // pre-process as many pages as the time budget allows; leftovers are picked
-  // up automatically when the manager opens the flier
+  // process and auto-publish every auto-fetched flier that isn't finished —
+  // today's imports plus any leftovers a previous run couldn't fit in the
+  // budget. Manual uploads (no sourceKey) keep the manager review queue.
+  const autoFliers = await prisma.flier.findMany({
+    where: { sourceKey: { not: null }, status: { in: ["PROCESSING", "REVIEW"] } },
+    select: { id: true, status: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   let processed = 0;
-  for (const flierId of newFlierIds) {
-    for (;;) {
-      if (Date.now() - started > TIME_BUDGET_MS) break;
+  let published = 0;
+  for (const flier of autoFliers) {
+    let done = flier.status === "REVIEW";
+    while (!done && Date.now() - started <= TIME_BUDGET_MS) {
       try {
-        const result = await processNextPendingPage(flierId);
+        const result = await processNextPendingPage(flier.id);
         if (result.processedPage) processed++;
-        if (result.done) break;
+        done = result.done;
       } catch {
-        break; // page marked FAILED; manager can retry from the dashboard
+        break; // page marked FAILED; the next run finishes the rest
       }
     }
+    if (done) published += await autoPublishFlier(flier.id);
   }
 
-  return NextResponse.json({ summary, newFliers: newFlierIds.length, pagesProcessed: processed });
+  return NextResponse.json({
+    summary,
+    newFliers: newFlierIds.length,
+    pagesProcessed: processed,
+    offersPublished: published,
+  });
 }

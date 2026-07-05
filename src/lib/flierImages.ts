@@ -15,11 +15,12 @@ export async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
 
 export type NormalizedBox = { x0: number; y0: number; x1: number; y1: number };
 
-/** Small (320px wide) version of a page image for chips and strips. */
+/** Small (640px wide) version of a page image for chips, strips and cover cards. */
 export async function makePageThumbnail(buffer: Buffer): Promise<string> {
+  // 640px: sharp enough for the /fletushkat cover cards on retina phones
   const thumb = await sharp(buffer)
-    .resize({ width: 320, withoutEnlargement: true })
-    .jpeg({ quality: 70 })
+    .resize({ width: 640, withoutEnlargement: true })
+    .jpeg({ quality: 72 })
     .toBuffer();
   return saveImageBuffer(thumb, "image/jpeg");
 }

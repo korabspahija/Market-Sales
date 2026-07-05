@@ -23,7 +23,7 @@ export default async function FliersPage() {
     <div className="space-y-5">
       <section>
         <h1 className="text-2xl font-extrabold leading-tight tracking-tight md:text-3xl">
-          Fletushkat e javës
+          Fletushkat e fundit
         </h1>
         <p className="mt-1 text-sm text-ink-soft">
           Fletushkat origjinale të marketeve, faqe për faqe — pa kërkim, pa filtra.
@@ -76,7 +76,7 @@ export default async function FliersPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 p-3">
+                <div className="flex items-start gap-2 p-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={flier.chain.logoUrl}
@@ -85,7 +85,7 @@ export default async function FliersPage() {
                   />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-extrabold leading-tight">{flier.chain.name}</p>
-                    <p className="truncate text-xs text-ink-soft">
+                    <p className="text-xs leading-snug text-ink-soft">
                       {flier.startsAt && flier.endsAt
                         ? `${formatDate(flier.startsAt)} – ${formatDate(flier.endsAt)}`
                         : `${flier.pageCount} faqe`}
