@@ -20,6 +20,7 @@ export const CHAINS: SeedChain[] = [
   { slug: "interex", name: "Interex", brandColor: "#E30613", darkColor: "#A1040D", letter: "I", logoFile: "interex.svg" },
   { slug: "albi-market", name: "Albi Market", brandColor: "#E2001A", darkColor: "#9E0012", letter: "A", logoFile: "albi-market.png" },
   { slug: "spar", name: "SPAR Kosova", brandColor: "#006633", darkColor: "#004422", letter: "S", logoFile: "spar.png" },
+  { slug: "express-store", name: "Express Store", brandColor: "#E95D0F", darkColor: "#B34305", letter: "E", logoFile: "express-store.png" },
 ];
 
 export const MANAGERS = [
@@ -30,6 +31,7 @@ export const MANAGERS = [
   { chainSlug: "interex", name: "Vjosa Hoxha", email: "menaxher.interex@aksione.com", password: MANAGER_PASSWORD },
   { chainSlug: "albi-market", name: "Blerim Shala", email: "menaxher.albi@aksione.com", password: MANAGER_PASSWORD },
   { chainSlug: "spar", name: "Donika Rexhepi", email: "menaxher.spar@aksione.com", password: MANAGER_PASSWORD },
+  { chainSlug: "express-store", name: "Menaxheri Express", email: "menaxher.express@aksione.com", password: MANAGER_PASSWORD },
 ];
 
 export const STORES = [

@@ -82,9 +82,67 @@ async function meridian(): Promise<FlierSource | null> {
   return { chainSlug: "meridian-express", sourceKey: `meridian:${hash(newest.url)}`, pdfUrl: newest.url };
 }
 
+const MONTHS: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+/** SPAR publishes date-stamped PDFs on /fletushka/ (ev-brochures/<year>/<month>/). */
+async function spar(): Promise<FlierSource | null> {
+  const html = await fetchText("https://spar-kosova.com/fletushka/");
+  const pdfs = [...html.matchAll(/(?:src|href)="(https?:\/\/spar-kosova\.com\/wp-content\/uploads\/(?:ev-brochures\/)?(\d{4})\/(\w+)\/[^"]+\.pdf)"/g)]
+    .map((m) => {
+      const month = /^\d+$/.test(m[3]) ? Number(m[3]) : (MONTHS[m[3].toLowerCase()] ?? 0);
+      return { url: m[1].replace(/^http:/, "https:"), at: new Date(Number(m[2]), month, 0) };
+    })
+    .filter((p) => p.at.getFullYear() > 2000)
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
+  const newest = pdfs[0];
+  if (!newest || !isFresh(newest.at)) return null;
+  return { chainSlug: "spar", sourceKey: `spar:${hash(newest.url)}`, pdfUrl: newest.url };
+}
+
+/** Express Store serves numbered PNG pages under epoch-stamped folders. */
+async function expressStore(): Promise<FlierSource | null> {
+  const html = await fetchText("https://expressstore-ks.com/fletushka");
+  const first = [...html.matchAll(/(?:src|href)="(https:\/\/expressstore-ks\.com\/fletushkat\/(\d{10})\/([fF])1\.png)"/g)]
+    .map((m) => ({ folder: m[2], casing: m[3], at: new Date(Number(m[2]) * 1000) }))
+    .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+  if (!first || !isFresh(first.at)) return null;
+
+  // probe consecutive pages until one is missing
+  const imageUrls: string[] = [];
+  for (let pageNo = 1; pageNo <= MAX_PAGES; pageNo++) {
+    const url = `https://expressstore-ks.com/fletushkat/${first.folder}/${first.casing}${pageNo}.png`;
+    const head = await fetch(url, { method: "HEAD", headers: HEADERS, signal: AbortSignal.timeout(15_000) });
+    if (!head.ok) break;
+    imageUrls.push(url);
+  }
+  if (imageUrls.length === 0) return null;
+  return { chainSlug: "express-store", sourceKey: `express:${first.folder}`, imageUrls };
+}
+
+/** Albi Market: newest WP upload folder on /ofertat/, like Viva. */
+async function albi(): Promise<FlierSource | null> {
+  const html = await fetchText("https://albimarket.com/ofertat/");
+  const all = [...html.matchAll(/src="(https:\/\/albimarket\.com\/wp-content\/uploads\/(\d{4})\/(\d{2})\/[^"]+-scaled\.jpg)"/g)];
+  if (all.length === 0) return null;
+  const newestFolder = all.map((m) => `${m[2]}/${m[3]}`).sort().at(-1)!;
+  const [year, month] = newestFolder.split("/").map(Number);
+  if (!isFresh(new Date(year, month, 0))) return null;
+  const imageUrls = [...new Set(all.filter((m) => `${m[2]}/${m[3]}` === newestFolder).map((m) => m[1]))]
+    .sort()
+    .slice(0, MAX_PAGES);
+  if (imageUrls.length === 0) return null;
+  return { chainSlug: "albi-market", sourceKey: `albi:${hash(imageUrls.join("|"))}`, imageUrls };
+}
+
 // explicit names — minified function names are useless in cron logs
 export const FLIER_SOURCE_ADAPTERS: Array<{ name: string; fetch: () => Promise<FlierSource | null> }> = [
   { name: "viva-fresh", fetch: vivaFresh },
   { name: "interex", fetch: interex },
   { name: "meridian-express", fetch: meridian },
+  { name: "spar", fetch: spar },
+  { name: "express-store", fetch: expressStore },
+  { name: "albi-market", fetch: albi },
 ];
