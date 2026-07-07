@@ -16,17 +16,5 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
-    // Android share sheet -> new flier. Not in Next's Manifest type yet, so
-    // it's merged in via the cast below.
-    ...({
-      share_target: {
-        action: "/api/share-target",
-        method: "POST",
-        enctype: "multipart/form-data",
-        params: {
-          files: [{ name: "pages", accept: ["image/jpeg", "image/png", "image/webp"] }],
-        },
-      },
-    } as Partial<MetadataRoute.Manifest>),
   };
 }

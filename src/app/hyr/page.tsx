@@ -12,22 +12,14 @@ export default async function LoginPage(props: PageProps<"/hyr">) {
   if (session) redirect("/menaxho");
 
   const searchParams = await props.searchParams;
-  const fromShare = searchParams.share === "1";
-  const returnTo =
-    typeof searchParams.kthehu === "string"
-      ? searchParams.kthehu
-      : fromShare
-        ? "/menaxho/fletushkat/ngarko"
-        : "/menaxho";
+  const returnTo = typeof searchParams.kthehu === "string" ? searchParams.kthehu : "/menaxho";
 
   return (
     <div className="mx-auto mt-6 w-full max-w-sm md:mt-16">
       <div className="rounded-3xl border border-line bg-white p-6 shadow-sm md:p-8">
         <h1 className="text-2xl font-extrabold tracking-tight">Hyrja për menaxherë</h1>
         <p className="mt-1.5 text-sm text-ink-soft">
-          {fromShare
-            ? "Identifikohu, pastaj provo ta ndash sërish fletushkën."
-            : "Identifikohu për të menaxhuar ofertat e zinxhirit tënd."}
+          Identifikohu për të menaxhuar ofertat e zinxhirit tënd.
         </p>
         <LoginForm returnTo={returnTo} />
       </div>
