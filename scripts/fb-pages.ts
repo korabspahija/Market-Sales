@@ -301,6 +301,13 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
             }
           }
           if (pages.length === 0) continue;
+          // a partial album would import incomplete AND claim the dedupe key,
+          // blocking tomorrow's complete import — only take a post whole(ish)
+          const expected = Math.min(images.length, MAX_PAGES_PER_POST);
+          if (pages.length < Math.ceil(expected * 0.6)) {
+            log(`  only ${pages.length}/${expected} pages resolved — leaving the post for the next run`);
+            continue;
+          }
 
           fliers.push({
             chainSlug,
