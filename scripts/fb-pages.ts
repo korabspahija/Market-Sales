@@ -16,6 +16,8 @@ export type FacebookFlier = {
 const FB_PAGES: Array<{ chainSlug: string; handle: string }> = [
   { chainSlug: "meridian-express", handle: "RrjetiMeridianExpress" },
   { chainSlug: "albi-market", handle: "AlbiMarket" },
+  { chainSlug: "maxi", handle: "maxisupermarketprishtine" },
+  { chainSlug: "conad", handle: "conadkosova" },
 ];
 
 // Quality gate: the first import of a photo wins forever (the perceptual
