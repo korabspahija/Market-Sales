@@ -94,8 +94,10 @@ async function fullResolution(
   if (!image.href) return image.src;
   const page = await context.newPage();
   try {
+    // generous jittered pacing: theater pages throttle rapid visitors down
+    // to 206px login stubs — a nightly batch can afford to stroll
+    await new Promise((resolve) => setTimeout(resolve, 6_000 + Math.floor(Math.random() * 8_000)));
     await page.goto(image.href, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    // human-ish pacing between theater visits
     await page.waitForTimeout(1_800 + Math.floor(Math.random() * 1_500));
     await page.keyboard.press("Escape").catch(() => {});
     const url = (await page.evaluate(`(() => {
@@ -267,12 +269,18 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
           continue;
         }
 
+        // spend the limited theater budget on real fliers first: albums
+        // (multi-image posts) before single-image posts (usually greetings)
+        const prioritized = [...groups].sort((a, b) => b.length - a.length);
+
         let postsTaken = 0;
         let visits = 0;
-        for (const images of groups) {
-          if (postsTaken >= MAX_POSTS || visits >= MAX_PHOTO_VISITS) break;
+        let consecutiveStubs = 0;
+        for (const images of prioritized) {
+          if (postsTaken >= MAX_POSTS || visits >= MAX_PHOTO_VISITS || consecutiveStubs >= 5) break;
           const pages: Buffer[] = [];
           for (const image of images.slice(0, MAX_PAGES_PER_POST)) {
+            if (consecutiveStubs >= 5) break; // throttled — stubs from here on
             try {
               if (image.href) visits++;
               const url = await fullResolution(context, image);
@@ -282,8 +290,10 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
               const meta = await sharp(buffer).metadata();
               if (buffer.length < MIN_BYTES || !meta.width || meta.width < MIN_WIDTH) {
                 log(`  skipped image ${buffer.length}B ${meta.width ?? "?"}px`);
+                if ((meta.width ?? 0) < 300) consecutiveStubs++;
                 continue;
               }
+              consecutiveStubs = 0;
               log(`  page ${meta.width}x${meta.height ?? "?"} (${Math.round(buffer.length / 1024)}KB)`);
               pages.push(buffer);
             } catch {
