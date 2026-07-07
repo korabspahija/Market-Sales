@@ -6,18 +6,18 @@ export type CropRect = { left: number; top: number; width: number; height: numbe
 /**
  * Where to crop each extracted product out of the flier page.
  *
- * The vision model reads text and enumerates products in reading order
- * reliably, but its pixel boxes and even its row/column arithmetic drift
- * between runs. So the geometry comes from the pixels: the content panel is
- * detected by contrast with the page border, and the row/column bands by the
- * content profile inside the panel. The model then only has to say *which*
- * cell an item occupies — via its grid indices when its column count agrees
- * with the pixels, or via reading order when the item count matches the grid
- * exactly. Irregular pages produce no crops (category icons) by design.
+ * Geometry comes from the pixels: cells are detected from the page structure
+ * (layout rows + column profiles, or the legacy panel-grid detectors). The
+ * model then only has to POINT — each item claims the cell its rough box
+ * CENTER lands in. Pointing is reliable even when box edges drift, and it
+ * removes the old requirement that item count must equal cell count (the
+ * extractor intentionally skips multi-buy cards, so counts rarely match).
+ * Finally each claimed cell is refined to hug the product PHOTO inside it,
+ * ignoring text — names and prices live in the card UI anyway.
  */
 export async function computeCropRects(
   items: ExtractedItem[],
-  grid: { rows: number | null; cols: number | null },
+  _grid: { rows: number | null; cols: number | null },
   imageBuffer: Buffer,
   imageWidth: number,
   imageHeight: number,
@@ -26,85 +26,204 @@ export async function computeCropRects(
   const none = items.map(() => null);
   if (items.length === 0) return none;
 
-  // preferred: the structure pass listed every card row (handles mixed
-  // layouts like a 5-card fruit row above 4-card dairy rows); items are
-  // extracted in reading order, so once the cell count matches the item
-  // count the mapping is simply sequential
+  // cell-structure sources in TRUST order: a box-cluster grid that passed
+  // its strict regularity gate describes the page best (counts from the
+  // items themselves, geometry from the panel); the layout pass and the
+  // legacy pixel detectors follow. First source that accounts for most of
+  // the items wins — items are assigned by order-preserving alignment on
+  // box-center distance (items arrive in reading order, cells row-major),
+  // so order fixes what distance alone shuffles on dense pages.
+  const panel = await detectContentPanel(imageBuffer).catch(() => null);
+  const candidates: BoundingBox[][] = [];
+  const fromBoxes = boxGridCells(items, panel);
+  if (fromBoxes) candidates.push(fromBoxes);
   if (layoutRows && layoutRows.length > 0) {
-    const cells = await rowCells(imageBuffer, layoutRows, items.length);
-    if (cells) {
-      return items.map((_item, index) =>
-        cells[index] ? toPixels(cells[index], imageWidth, imageHeight, 0.004) : null,
-      );
+    const fromLayout = await cellsFromLayout(imageBuffer, layoutRows).catch(() => null);
+    if (fromLayout && fromLayout.length > 0) candidates.push(fromLayout);
+  }
+  const fromLegacy = await legacyCells(imageBuffer).catch(() => null);
+  if (fromLegacy && fromLegacy.length > 0) candidates.push(fromLegacy);
+  if (candidates.length === 0) return none;
+
+  let chosen: (BoundingBox | null)[] = items.map(() => null);
+  let bestMatched = 0;
+  for (const cells of candidates) {
+    const result = alignItemsToCells(items, cells);
+    if (result.matched >= items.length * 0.7) {
+      chosen = result.chosen;
+      break;
+    }
+    if (result.matched > bestMatched) {
+      chosen = result.chosen;
+      bestMatched = result.matched;
     }
   }
 
-  // layout A (Meridian-style): one light panel on a colored frame, products
-  // as content humps inside it. layout B (Interex-style): individual cards
-  // contrasting with the page background itself.
-  const panel = await detectContentPanel(imageBuffer).catch(() => null);
-  let bands = panel ? await detectGridBands(imageBuffer, panel).catch(() => null) : null;
-  if (!bands) bands = await detectPageCardBands(imageBuffer, panel).catch(() => null);
-  if (!bands) {
-    // no detectable structure: the padded raw box is all there is
-    return items.map((item) =>
-      item.box ? toPixels(item.box, imageWidth, imageHeight, 0.03) : null,
-    );
+  const rects: (CropRect | null)[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const cell = chosen[i];
+    if (!cell) {
+      rects.push(null);
+      continue;
+    }
+    const photo = await refineCellToPhoto(imageBuffer, cell).catch(() => null);
+    rects.push(toPixels(photo ?? cell, imageWidth, imageHeight, 0.004));
   }
-
-  const rows = bands.rowBands.length;
-  const cols = bands.colBands.length;
-
-  // how does an item map to a cell?
-  let cellOf: (item: ExtractedItem, index: number) => { r: number; c: number } | null;
-  if (grid.cols === cols && items.every((i) => !i.gridCol || i.gridCol <= cols)) {
-    // the model agrees with the pixels on the column count — trust its indices
-    cellOf = (item) =>
-      item.gridRow && item.gridCol && item.gridRow <= rows
-        ? { r: item.gridRow - 1, c: item.gridCol - 1 }
-        : null;
-  } else if (items.length === rows * cols) {
-    // full page in reading order — position follows from the index alone
-    cellOf = (_item, index) => ({ r: Math.floor(index / cols), c: index % cols });
-  } else {
-    return none;
-  }
-
-  return items.map((item, index) => {
-    const cell = cellOf(item, index);
-    if (!cell) return null;
-    const y = bands.rowBands[cell.r];
-    const x = bands.colBands[cell.c];
-    if (!y || !x) return null;
-    return toPixels({ x0: x[0], y0: y[0], x1: x[1], y1: y[1] }, imageWidth, imageHeight, 0.004);
-  });
+  return rects;
 }
 
 /**
- * Cell boxes for every layout row, in reading order. Row y-ranges come from
- * the structure pass (structurally right even when its card counts drift);
- * the card count per row comes from the pixel column profile of that strip,
- * with the model's stated counts as tie-breaker — whichever total matches
- * the item count wins. Returns null when neither does.
+ * Order-preserving item→cell assignment (Needleman-Wunsch style). Skipping
+ * a cell is cheap (the extractor intentionally skips multi-buy cards);
+ * dropping an item is expensive but better than a wrong match; matches
+ * beyond one-cell's distance are forbidden.
  */
-async function rowCells(
-  buffer: Buffer,
-  layoutRows: LayoutRow[],
-  itemCount: number,
-): Promise<BoundingBox[] | null> {
+/**
+ * A regular grid inferred from the item boxes THEMSELVES: individual boxes
+ * drift (often ALL of them, systematically), but their centers still cluster
+ * into clean columns and rows on a regular page. So the clusters supply only
+ * the COUNTS — the geometry is a uniform grid over the pixel-detected panel,
+ * which can't inherit the boxes' drift. Pages whose box centers don't fit a
+ * regular grid (mixed layouts) are rejected.
+ */
+function boxGridCells(items: ExtractedItem[], panel: BoundingBox | null): BoundingBox[] | null {
+  const boxes = items.filter((i) => i.box).map((i) => i.box!);
+  if (boxes.length < 6) return null;
+
+  const cluster = (values: number[]): number[][] => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const gaps = [];
+    for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i] - sorted[i - 1]);
+    const positive = gaps.filter((g) => g > 0.001);
+    const typical = positive.length > 0 ? median(positive) : 0.05;
+    const groups: number[][] = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] > Math.max(typical * 1.8, 0.05)) groups.push([sorted[i]]);
+      else groups[groups.length - 1].push(sorted[i]);
+    }
+    // a lone straggler is a drifted box, not a real column/row
+    return groups.filter((g) => g.length >= 2 || groups.length <= 2);
+  };
+
+  const centerOf = (g: number[]) => g.reduce((a, b) => a + b, 0) / g.length;
+  const colGroups = cluster(boxes.map((b) => (b.x0 + b.x1) / 2));
+  const rowGroups = cluster(boxes.map((b) => (b.y0 + b.y1) / 2));
+  const cols = colGroups.length;
+  const rows = rowGroups.length;
+  if (cols < 2 || cols > 6 || rows < 2 || rows > 8) return null;
+  if (cols * rows < boxes.length || cols * rows > boxes.length * 1.8) return null;
+
+  // regularity check: nearly every box center must sit close to a cluster
+  // center on BOTH axes — mixed layouts (a 5-col row above 4-col rows) fail here
+  const colCenters = colGroups.map(centerOf);
+  const rowCenters = rowGroups.map(centerOf);
+  const colSpacing = cols > 1 ? (colCenters[cols - 1] - colCenters[0]) / (cols - 1) : 0.2;
+  const rowSpacing = rows > 1 ? (rowCenters[rows - 1] - rowCenters[0]) / (rows - 1) : 0.2;
+  let fits = 0;
+  for (const box of boxes) {
+    const cx = (box.x0 + box.x1) / 2;
+    const cy = (box.y0 + box.y1) / 2;
+    const colOk = colCenters.some((c) => Math.abs(cx - c) < colSpacing * 0.35);
+    const rowOk = rowCenters.some((r) => Math.abs(cy - r) < rowSpacing * 0.35);
+    if (colOk && rowOk) fits++;
+  }
+  if (fits < boxes.length * 0.85) return null;
+
+  // geometry from the panel, not from the (possibly shifted) boxes
+  const areaX0 = panel?.x0 ?? 0.03;
+  const areaX1 = panel?.x1 ?? 0.97;
+  const areaY0 = panel?.y0 ?? 0.05;
+  const areaY1 = panel?.y1 ?? 0.95;
+  const cells: BoundingBox[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      cells.push({
+        x0: areaX0 + ((areaX1 - areaX0) * c) / cols,
+        y0: areaY0 + ((areaY1 - areaY0) * r) / rows,
+        x1: areaX0 + ((areaX1 - areaX0) * (c + 1)) / cols,
+        y1: areaY0 + ((areaY1 - areaY0) * (r + 1)) / rows,
+      });
+    }
+  }
+  return cells;
+}
+
+function alignItemsToCells(
+  items: ExtractedItem[],
+  cells: BoundingBox[],
+): { chosen: (BoundingBox | null)[]; matched: number; meanDist: number } {
+  const n = items.length;
+  const m = cells.length;
+  const SKIP_CELL = 0.06;
+  const SKIP_ITEM = 0.9;
+  const MAX_DIST = 1.25;
+
+  const dist = (item: ExtractedItem, cell: BoundingBox): number => {
+    if (!item.box) return Infinity;
+    const cx = (item.box.x0 + item.box.x1) / 2;
+    const cy = (item.box.y0 + item.box.y1) / 2;
+    // in cell-size units, so "one cell over" costs the same on both axes
+    const dx = (cx - (cell.x0 + cell.x1) / 2) / Math.max(0.01, cell.x1 - cell.x0);
+    const dy = (cy - (cell.y0 + cell.y1) / 2) / Math.max(0.01, cell.y1 - cell.y0);
+    const d = Math.hypot(dx, dy);
+    return d <= MAX_DIST ? d : Infinity;
+  };
+
+  // dp[i][j]: min cost of aligning first i items with first j cells
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(Infinity));
+  const from: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  dp[0][0] = 0;
+  for (let j = 1; j <= m; j++) {
+    dp[0][j] = dp[0][j - 1] + SKIP_CELL;
+    from[0][j] = 1; // skipped cell
+  }
+  for (let i = 1; i <= n; i++) {
+    dp[i][0] = dp[i - 1][0] + SKIP_ITEM;
+    from[i][0] = 2; // dropped item
+    for (let j = 1; j <= m; j++) {
+      const skipCell = dp[i][j - 1] + SKIP_CELL;
+      const dropItem = dp[i - 1][j] + SKIP_ITEM;
+      const match = dp[i - 1][j - 1] + dist(items[i - 1], cells[j - 1]);
+      dp[i][j] = Math.min(skipCell, dropItem, match);
+      from[i][j] = dp[i][j] === match ? 3 : dp[i][j] === skipCell ? 1 : 2;
+    }
+  }
+
+  const chosen: (BoundingBox | null)[] = items.map(() => null);
+  let matched = 0;
+  let distSum = 0;
+  let i = n;
+  let j = m;
+  while (i > 0 || j > 0) {
+    const move = from[i][j];
+    if (move === 3) {
+      chosen[i - 1] = cells[j - 1];
+      matched++;
+      distSum += dist(items[i - 1], cells[j - 1]);
+      i--;
+      j--;
+    } else if (move === 1) {
+      j--;
+    } else {
+      i--;
+    }
+  }
+  return { chosen, matched, meanDist: matched > 0 ? distSum / matched : Infinity };
+}
+
+/** Full cell list from the layout pass: pixel rows × per-strip columns. */
+async function cellsFromLayout(buffer: Buffer, layoutRows: LayoutRow[]): Promise<BoundingBox[] | null> {
   const panel = await detectContentPanel(buffer).catch(() => null);
   const x0 = panel?.x0 ?? 0.03;
   const x1 = panel?.x1 ?? 0.97;
 
-  // pixel row bands are precise and stable; the model's y-bands — and even
-  // its row count — drift between runs, so the pixel rows go first and the
-  // model's rows are only the fallback
-  let pxRows: LayoutRow[] | null = null;
+  // pixel row bands are precise and stable; the model's rows are the fallback
+  let rows: LayoutRow[] | null = null;
   if (panel) {
     const profiles = await panelProfiles(buffer, panel).catch(() => null);
     const bands = profiles ? bandsFromProfile(profiles.rowFraction, panel.y0, panel.y1) : null;
-    if (bands) {
-      pxRows = bands.map(([a, b], i) => ({
+    if (bands && bands.length >= 2) {
+      rows = bands.map(([a, b], i) => ({
         y0: a,
         y1: b,
         // the model's per-row counts only line up when it saw the same rows
@@ -112,45 +231,169 @@ async function rowCells(
       }));
     }
   }
+  if (!rows) rows = layoutRows;
 
-  const candidates = pxRows ? [pxRows, layoutRows] : [layoutRows];
-  for (const rows of candidates) {
-    const detected: ([number, number][] | null)[] = [];
-    for (const row of rows) {
-      const strip: BoundingBox = { x0, y0: row.y0, x1, y1: row.y1 };
-      detected.push(await detectStripColumns(buffer, strip).catch(() => null));
-    }
-    if (process.env.CROP_DEBUG) {
-      console.log(
-        "[crop] strips:",
-        rows
-          .map((row, i) => `y ${row.y0.toFixed(2)}-${row.y1.toFixed(2)} model:${row.cards} px:${detected[i]?.length ?? "-"}`)
-          .join(" | "),
-      );
-    }
+  const cells: BoundingBox[] = [];
+  for (const row of rows) {
+    const strip: BoundingBox = { x0, y0: row.y0, x1, y1: row.y1 };
+    let colBands = await detectStripColumns(buffer, strip).catch(() => null);
+    if (!colBands && row.cards > 0) colBands = uniformBands(x0, x1, row.cards);
+    if (!colBands) continue;
+    for (const x of colBands) cells.push({ x0: x[0], y0: row.y0, x1: x[1], y1: row.y1 });
+  }
+  return cells.length > 0 ? cells : null;
+}
 
-    // pixel counts first (model counts fill undetected strips), whole-model
-    // counts second — accepted only when the total matches the item count
-    const pixelCounts = rows.map((row, i) => detected[i]?.length ?? row.cards);
-    const modelCounts = rows.map((row) => row.cards);
-    let counts: number[] | null = null;
-    for (const candidate of [pixelCounts, modelCounts]) {
-      if (candidate.every((c) => c > 0) && candidate.reduce((a, b) => a + b, 0) === itemCount) {
-        counts = candidate;
-        break;
+/** Cell list from the legacy whole-page grid detectors. */
+async function legacyCells(buffer: Buffer): Promise<BoundingBox[] | null> {
+  const panel = await detectContentPanel(buffer).catch(() => null);
+  let bands = panel ? await detectGridBands(buffer, panel).catch(() => null) : null;
+  if (!bands) bands = await detectPageCardBands(buffer, panel).catch(() => null);
+  if (!bands) return null;
+  const cells: BoundingBox[] = [];
+  for (const y of bands.rowBands) {
+    for (const x of bands.colBands) cells.push({ x0: x[0], y0: y[0], x1: x[1], y1: y[1] });
+  }
+  return cells;
+}
+
+/**
+ * The product PHOTO inside a card cell — the crop centers on it and ignores
+ * the text, exactly like a product shot. The photo is the connected
+ * component with the best area × color-diversity score: price bubbles are
+ * big but near-monochrome, text lines are small, photos are large and
+ * colorful. Returns null when nothing photo-like is found (crop stays the
+ * whole cell).
+ */
+async function refineCellToPhoto(buffer: Buffer, cell: BoundingBox): Promise<BoundingBox | null> {
+  const meta = await sharp(buffer).metadata();
+  if (!meta.width || !meta.height) return null;
+
+  // pad the cell slightly so a marginally-off cell still contains the photo
+  const padX = (cell.x1 - cell.x0) * 0.05;
+  const padY = (cell.y1 - cell.y0) * 0.05;
+  const area = {
+    x0: Math.max(0, cell.x0 - padX),
+    y0: Math.max(0, cell.y0 - padY),
+    x1: Math.min(1, cell.x1 + padX),
+    y1: Math.min(1, cell.y1 + padY),
+  };
+  const region = {
+    left: Math.round(area.x0 * meta.width),
+    top: Math.round(area.y0 * meta.height),
+    width: Math.max(24, Math.round((area.x1 - area.x0) * meta.width)),
+    height: Math.max(24, Math.round((area.y1 - area.y0) * meta.height)),
+  };
+  const W = 140;
+  const H = Math.max(48, Math.min(420, Math.round((region.height / region.width) * W)));
+  const { data } = await sharp(buffer)
+    .extract(region)
+    .resize(W, H, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const channel = (x: number, y: number, c: number) => data[(y * W + x) * 3 + c];
+  // card background from the border ring of the cell
+  const ring = Math.max(2, Math.round(Math.min(W, H) * 0.05));
+  const bgSamples: number[][] = [[], [], []];
+  for (let x = 0; x < W; x++) {
+    for (const y of [ring, H - 1 - ring]) {
+      for (let c = 0; c < 3; c++) bgSamples[c].push(channel(x, y, c));
+    }
+  }
+  for (let y = 0; y < H; y++) {
+    for (const x of [ring, W - 1 - ring]) {
+      for (let c = 0; c < 3; c++) bgSamples[c].push(channel(x, y, c));
+    }
+  }
+  const bg = bgSamples.map(median);
+  let mask = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const diff =
+        Math.abs(channel(x, y, 0) - bg[0]) +
+        Math.abs(channel(x, y, 1) - bg[1]) +
+        Math.abs(channel(x, y, 2) - bg[2]);
+      if (diff > 55) mask[y * W + x] = 1;
+    }
+  }
+  // one erosion pass: thin text strokes vanish, the photo body survives
+  const eroded = new Uint8Array(W * H);
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const p = y * W + x;
+      if (mask[p] && mask[p - 1] && mask[p + 1] && mask[p - W] && mask[p + W]) eroded[p] = 1;
+    }
+  }
+  mask = eroded;
+
+  // connected components with a per-component color-diversity measure
+  type Component = { minX: number; maxX: number; minY: number; maxY: number; area: number; colors: Set<number> };
+  const seen = new Uint8Array(W * H);
+  const components: Component[] = [];
+  const stack: number[] = [];
+  for (let start = 0; start < W * H; start++) {
+    if (!mask[start] || seen[start]) continue;
+    const comp: Component = { minX: W, maxX: 0, minY: H, maxY: 0, area: 0, colors: new Set() };
+    stack.push(start);
+    seen[start] = 1;
+    while (stack.length > 0) {
+      const p = stack.pop()!;
+      const px = p % W;
+      const py = (p / W) | 0;
+      comp.area++;
+      if (px < comp.minX) comp.minX = px;
+      if (px > comp.maxX) comp.maxX = px;
+      if (py < comp.minY) comp.minY = py;
+      if (py > comp.maxY) comp.maxY = py;
+      // 3 bits per channel — enough to tell a photo from a flat price bubble
+      comp.colors.add(((channel(px, py, 0) >> 5) << 6) | ((channel(px, py, 1) >> 5) << 3) | (channel(px, py, 2) >> 5));
+      for (const q of [p - 1, p + 1, p - W, p + W]) {
+        if (q < 0 || q >= W * H || seen[q] || !mask[q]) continue;
+        if ((q === p - 1 && px === 0) || (q === p + 1 && px === W - 1)) continue;
+        seen[q] = 1;
+        stack.push(q);
       }
     }
-    if (!counts) continue;
-
-    const cells: BoundingBox[] = [];
-    rows.forEach((row, i) => {
-      const count = counts[i];
-      const bands = detected[i]?.length === count ? detected[i]! : uniformBands(x0, x1, count);
-      for (const x of bands) cells.push({ x0: x[0], y0: row.y0, x1: x[1], y1: row.y1 });
-    });
-    return cells;
+    if (comp.area >= W * H * 0.03) components.push(comp);
   }
-  return null;
+  if (components.length === 0) return null;
+
+  const scoreOf = (c: Component) => c.area * Math.min(1, c.colors.size / 10);
+  components.sort((a, b) => scoreOf(b) - scoreOf(a));
+  const best = components[0];
+  // too sliver-like to be a product photo
+  if (best.maxX - best.minX < W * 0.18 || best.maxY - best.minY < H * 0.12) return null;
+
+  // fold in fragments of the same photo (a bottle cap above its label) —
+  // conservatively, so a neighbour's photo poking into the padded area
+  // doesn't drag the crop sideways
+  const reachX = W * 0.04;
+  const reachY = H * 0.04;
+  let { minX, maxX, minY, maxY } = best;
+  for (const comp of components.slice(1)) {
+    const overlapsX = comp.minX < maxX + reachX && comp.maxX > minX - reachX;
+    const overlapsY = comp.minY < maxY + reachY && comp.maxY > minY - reachY;
+    if (overlapsX && overlapsY && scoreOf(comp) > scoreOf(best) * 0.3) {
+      minX = Math.min(minX, comp.minX);
+      maxX = Math.max(maxX, comp.maxX);
+      minY = Math.min(minY, comp.minY);
+      maxY = Math.max(maxY, comp.maxY);
+    }
+  }
+
+  // back to page coordinates, with breathing room, clamped to the CELL —
+  // never past its edges even when the padded search area saw further
+  const spanX = area.x1 - area.x0;
+  const spanY = area.y1 - area.y0;
+  const breathe = 0.05;
+  return {
+    x0: Math.max(cell.x0, area.x0 + (minX / W - breathe) * spanX),
+    y0: Math.max(cell.y0, area.y0 + (minY / H - breathe) * spanY),
+    x1: Math.min(cell.x1, area.x0 + (maxX / W + breathe) * spanX),
+    y1: Math.min(cell.y1, area.y0 + (maxY / H + breathe) * spanY),
+  };
 }
 
 function uniformBands(start: number, end: number, count: number): [number, number][] {
