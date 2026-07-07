@@ -6,7 +6,7 @@
 //   npx tsx scripts/upload-folders.ts D:\path     (custom base)
 import "dotenv/config";
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, renameSync, statSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 const BASE = process.argv[2] ?? "C:\\Aksione";
@@ -33,7 +33,8 @@ const SLUGS: Record<string, string> = {
   "eli-abi": "eli-abi",
 };
 
-const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+// .jfif = what Facebook photo saves are named; it's plain JPEG inside
+const IMAGE_EXT = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp"]);
 const IGNORED_DIRS = new Set(["done"]);
 
 function log(message: string) {
@@ -52,15 +53,15 @@ function imageFiles(dir: string): string[] {
     .sort(naturalSort);
 }
 
-async function uploadChainFolder(folder: string, slug: string): Promise<number> {
-  const dir = path.join(BASE, folder);
+/** Upload the images of one directory as ONE flier. */
+async function uploadOneFlier(dir: string, doneRoot: string, label: string, slug: string): Promise<number> {
   const files = imageFiles(dir);
   if (files.length === 0) return 0;
 
   // stray HEIC (iPhone) can't be read server-side — flag it explicitly
   const heic = readdirSync(dir).filter((n) => /\.(heic|heif)$/i.test(n));
   if (heic.length > 0) {
-    log(`  ⚠ ${folder}: ${heic.length} HEIC file(s) ignored — convert to JPG first (${heic.slice(0, 2).join(", ")}…)`);
+    log(`  ⚠ ${label}: ${heic.length} HEIC file(s) ignored — convert to JPG first (${heic.slice(0, 2).join(", ")}…)`);
   }
 
   const buffers = files.map((name) => readFileSync(path.join(dir, name)));
@@ -77,13 +78,13 @@ async function uploadChainFolder(folder: string, slug: string): Promise<number> 
   });
   if (!register.ok) {
     const msg = await register.text().catch(() => "");
-    log(`  ✗ ${folder}: register failed (${register.status}) ${msg.slice(0, 120)}`);
+    log(`  ✗ ${label}: register failed (${register.status}) ${msg.slice(0, 120)}`);
     return 0;
   }
   const { id, existing } = (await register.json()) as { id: string; existing: boolean };
   if (existing) {
-    log(`  = ${folder}: already uploaded earlier — moving files to done`);
-    moveToDone(dir, files);
+    log(`  = ${label}: already uploaded earlier — moving files to done`);
+    moveToDone(dir, doneRoot, label, files);
     return 0;
   }
 
@@ -97,21 +98,45 @@ async function uploadChainFolder(folder: string, slug: string): Promise<number> 
       body: form,
     });
     if (!res.ok) {
-      log(`  ✗ ${folder}: page ${i + 1} (${files[i]}) failed (${res.status})`);
+      log(`  ✗ ${label}: page ${i + 1} (${files[i]}) failed (${res.status})`);
       return 0;
     }
   }
-  log(`  ✓ ${folder} -> ${slug}: uploaded ${files.length} page(s)`);
-  moveToDone(dir, files);
+  log(`  ✓ ${label} -> ${slug}: uploaded ${files.length} page(s)`);
+  moveToDone(dir, doneRoot, label, files);
   return files.length;
 }
 
-function moveToDone(dir: string, files: string[]) {
-  // timestamp-free unique-ish subfolder from the first filename + count, so a
-  // second run in the same session doesn't collide (Date.now is avoided to
-  // keep the script deterministic/testable)
+/**
+ * A chain folder holds either loose images (one flier) or one subfolder per
+ * flier (e.g. maxi\08-15 korrik\) — chains often run two fliers at once with
+ * different validity windows, and those must import separately.
+ */
+async function uploadChainFolder(folder: string, slug: string): Promise<number> {
+  const dir = path.join(BASE, folder);
+  let total = await uploadOneFlier(dir, dir, folder, slug);
+
+  for (const name of readdirSync(dir)) {
+    if (IGNORED_DIRS.has(name.toLowerCase())) continue;
+    const sub = path.join(dir, name);
+    if (!statSync(sub).isDirectory()) continue;
+    total += await uploadOneFlier(sub, dir, `${folder}\\${name}`, slug);
+    // the emptied flier subfolder is deleted (its files moved under done\)
+    try {
+      if (readdirSync(sub).length === 0) rmdirSync(sub);
+    } catch {
+      // leftover non-image files — leave the folder alone
+    }
+  }
+  return total;
+}
+
+function moveToDone(dir: string, doneRoot: string, label: string, files: string[]) {
+  // done\<flier-label>-<hash> under the CHAIN folder, so subfolder fliers
+  // don't nest their archive inside the folder being emptied
   const stamp = createHash("sha256").update(files.join("|")).digest("hex").slice(0, 8);
-  const doneDir = path.join(dir, "done", stamp);
+  const safeLabel = label.replace(/[^a-z0-9ëç \-]/gi, "").trim().replace(/\s+/g, "-") || "flier";
+  const doneDir = path.join(doneRoot, "done", `${safeLabel}-${stamp}`);
   mkdirSync(doneDir, { recursive: true });
   for (const name of files) renameSync(path.join(dir, name), path.join(doneDir, name));
 }
@@ -156,7 +181,14 @@ async function main() {
   for (const folder of entries) {
     const slug = SLUGS[folder.toLowerCase()];
     if (!slug) {
-      if (imageFiles(path.join(BASE, folder)).length > 0) {
+      const dir = path.join(BASE, folder);
+      const hasImages =
+        imageFiles(dir).length > 0 ||
+        readdirSync(dir).some((name) => {
+          const sub = path.join(dir, name);
+          return statSync(sub).isDirectory() && imageFiles(sub).length > 0;
+        });
+      if (hasImages) {
         log(`  ? ${folder}: not a known chain folder — rename it to one of: ${Object.keys(SLUGS).join(", ")}`);
         unknown++;
       }
