@@ -33,9 +33,11 @@ async function cropItems(
     );
     return Promise.all(
       rects.map(async (rect) => {
-        // low-res sources (social-media fliers) yield cells too small to be a
-        // usable photo — a clean category icon beats a blurry mis-cropped sliver
-        if (!rect || rect.width < 220 || rect.height < 220) return null;
+        // low-res sources (social-media fliers) yield photos too small to be
+        // usable — a clean category icon beats a blurry sliver. The bound
+        // fits the photo-hugging crops (~140-300px on normal pages), while
+        // 590px-feed mush (~80-100px) stays blocked.
+        if (!rect || rect.width < 130 || rect.height < 130) return null;
         try {
           const crop = await sharp(buffer)
             .extract(rect)
