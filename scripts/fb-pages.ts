@@ -243,6 +243,8 @@ export async function fetchFacebookFliers(): Promise<FacebookFlier[]> {
       process.env.LOCALAPPDATA ?? os.tmpdir(),
       "aksione-fb-profile",
     );
+    // headful made no difference (user-observed: walls either way) — the
+    // page variant Facebook serves is decided upstream of the browser
     context = await chromium.launchPersistentContext(profileDir, {
       channel: "msedge",
       headless: true,
