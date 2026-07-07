@@ -47,16 +47,32 @@ export async function computeCropRects(
 
   let chosen: (BoundingBox | null)[] = items.map(() => null);
   let bestMatched = 0;
+  let confident = false;
   for (const cells of candidates) {
     const result = alignItemsToCells(items, cells);
     if (result.matched >= items.length * 0.7) {
       chosen = result.chosen;
+      confident = true;
       break;
     }
     if (result.matched > bestMatched) {
       chosen = result.chosen;
       bestMatched = result.matched;
     }
+  }
+  // an irregular page (promo collages etc.) never reaches confident cell
+  // structure — there, keep only matches where the model's box sits square
+  // on the cell; a wrong crop is worse than a category icon
+  if (!confident) {
+    chosen = chosen.map((cell, i) => {
+      const box = items[i].box;
+      if (!cell || !box) return null;
+      const cx = (box.x0 + box.x1) / 2;
+      const cy = (box.y0 + box.y1) / 2;
+      const dx = (cx - (cell.x0 + cell.x1) / 2) / Math.max(0.01, cell.x1 - cell.x0);
+      const dy = (cy - (cell.y0 + cell.y1) / 2) / Math.max(0.01, cell.y1 - cell.y0);
+      return Math.hypot(dx, dy) <= 0.45 ? cell : null;
+    });
   }
 
   const rects: (CropRect | null)[] = [];
