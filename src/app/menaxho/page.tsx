@@ -52,6 +52,14 @@ export default async function ManagerDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {session.isAdmin && (
+            <Link
+              href="/menaxho/analitika"
+              className="rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-bold text-ink transition hover:border-ink/40"
+            >
+              📊 Analitika
+            </Link>
+          )}
           <Link
             href="/menaxho/krijo"
             className="rounded-xl bg-deal px-4 py-2.5 text-sm font-bold text-white transition hover:bg-deal-dark"

@@ -15,6 +15,7 @@ export type SessionPayload = {
   chainId: string;
   chainSlug: string;
   name: string;
+  isAdmin?: boolean;
 };
 
 export async function createSession(payload: SessionPayload): Promise<void> {
@@ -43,6 +44,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       chainId: payload.chainId,
       chainSlug: String(payload.chainSlug ?? ""),
       name: String(payload.name ?? ""),
+      isAdmin: payload.isAdmin === true,
     };
   } catch {
     return null;

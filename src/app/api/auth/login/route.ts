@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     chainId: manager.chainId,
     chainSlug: manager.chain.slug,
     name: manager.name,
+    isAdmin: manager.isAdmin,
   });
 
   return NextResponse.json({ ok: true });

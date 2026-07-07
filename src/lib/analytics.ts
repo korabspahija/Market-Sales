@@ -17,7 +17,10 @@ export type EventType =
   | "list_compare"
   | "share";
 
-export function trackEvent(type: EventType, data: Record<string, string | number | boolean>): void {
+export function trackEvent(
+  type: EventType,
+  data: Record<string, string | number | boolean | string[]>,
+): void {
   after(async () => {
     try {
       await prisma.event.create({ data: { type, data } });

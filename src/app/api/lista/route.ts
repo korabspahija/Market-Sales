@@ -18,10 +18,19 @@ export async function POST(request: Request) {
   const [sales, chains] = await Promise.all([getActiveSalesCached({}), getChainsCached()]);
   const results = compareBasket(lines, sales, chains);
 
+  // the lines themselves are the product: purchase intent per item, and
+  // which wishes no chain could serve (assortment gaps)
+  const normalizedLines = lines.map((line) => line.trim().toLowerCase().slice(0, 60)).filter(Boolean);
+  const unmatched = normalizedLines.filter(
+    (_line, index) => !results.some((result) => result.items[index]?.sale),
+  );
   trackEvent("list_compare", {
     items: lines.length,
     chainsMatched: results.length,
     bestCoverage: results[0]?.matched ?? 0,
+    winner: results[0]?.chain.slug ?? "",
+    lines: normalizedLines,
+    unmatched,
   });
 
   return NextResponse.json({ results, lines: lines.length });

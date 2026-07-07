@@ -49,6 +49,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
     trackEvent("offer_view", {
       saleId: sale.id,
       chain: sale.chain.slug,
+      category: sale.category,
       product: sale.searchName.slice(0, 60),
     });
   }
@@ -153,6 +154,7 @@ export default async function SaleDetailPage(props: PageProps<"/oferta/[id]">) {
 
           <ShareButtons
             saleId={sale.id}
+            chain={sale.chain.slug}
             title={`${sale.productName} -${percent}% te ${sale.chain.name}`}
             text={`${sale.productName} -${percent}% te ${sale.chain.name}: ${formatPrice(sale.newPriceCents)} në vend të ${formatPrice(sale.oldPriceCents)} — vlen deri më ${formatDateFull(sale.endsAt)} 🛒`}
           />

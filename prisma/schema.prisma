@@ -32,12 +32,14 @@ model Store {
 }
 
 model Manager {
-  id           String @id @default(cuid())
-  email        String @unique
+  id           String  @id @default(cuid())
+  email        String  @unique
   passwordHash String
   name         String
   chainId      String
-  chain        Chain  @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  chain        Chain   @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  // admins see the cross-chain analytics; the chainId is just an anchor
+  isAdmin      Boolean @default(false)
 }
 
 enum Category {

@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 
-export function ShareButtons({ title, text, saleId }: { title: string; text: string; saleId?: string }) {
+export function ShareButtons({
+  title,
+  text,
+  saleId,
+  chain,
+}: {
+  title: string;
+  text: string;
+  saleId?: string;
+  chain?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   function shareUrl(): string {
@@ -10,7 +20,10 @@ export function ShareButtons({ title, text, saleId }: { title: string; text: str
   }
 
   function track(channel: string) {
-    const payload = JSON.stringify({ type: "share", data: { channel, saleId: saleId ?? "" } });
+    const payload = JSON.stringify({
+      type: "share",
+      data: { channel, saleId: saleId ?? "", chain: chain ?? "" },
+    });
     // sendBeacon survives the page being backgrounded by the share sheet
     if (!navigator.sendBeacon?.("/api/events", new Blob([payload], { type: "application/json" }))) {
       fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
