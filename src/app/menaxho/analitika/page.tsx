@@ -120,9 +120,14 @@ export default async function AnalyticsPage(props: PageProps<"/menaxho/analitika
       </div>
 
       <Card title="Aktiviteti ditor" hint="Ngjarje gjithsej për ditë">
-        <div className="flex h-28 items-end gap-1">
+        <div className="flex h-36 items-end gap-1">
           {stats.daily.map((day) => (
-            <div key={day.day} className="group relative flex-1">
+            <div key={day.day} className="group relative flex flex-1 flex-col items-center justify-end">
+              {day.count > 0 && (
+                <span className={`font-bold text-ink-soft ${days === 7 ? "text-[11px]" : "text-[8px]"}`}>
+                  {day.count}
+                </span>
+              )}
               <div
                 className="w-full rounded-t-md bg-deal/80 transition group-hover:bg-deal"
                 style={{ height: `${Math.max(3, Math.round((day.count / maxDaily) * 100))}px` }}
